@@ -112,3 +112,56 @@ assert.deepStrictEqual(riskReasons({ status: 'D', path: 'src/a.js' }), ['deleted
 assert.deepStrictEqual(riskReasons({ status: 'M', path: 'package-lock.json' }), ['lockfile']);
 assert.deepStrictEqual(riskReasons({ status: 'M', path: '.github/workflows/ci.yml' }), ['CI config']);
 assert.deepStrictEqual(riskReasons({ status: 'M', path: 'src/app.js' }), []);
+
+// Import parsing and dependency-first review order
+const { parseImports, resolveImport, buildEdges, reviewOrder, buildSummaryMd } = require('./extension.js');
+assert.deepStrictEqual(
+  parseImports('src/a.ts', `import x from './b';\nconst y = require('../c');\nexport { z } from './d';`),
+  ['./b', '../c', './d']
+);
+assert.deepStrictEqual(parseImports('app/m.py', 'import app.util\nfrom .helpers import x\n'), [
+  'app.util',
+  '.helpers',
+]);
+assert.strictEqual(resolveImport('src/a.ts', './b', new Set(['src/b.ts'])), 'src/b.ts');
+assert.strictEqual(resolveImport('src/a.ts', './lib', new Set(['src/lib/index.js'])), 'src/lib/index.js');
+assert.strictEqual(resolveImport('app/m.py', 'app.util', new Set(['app/util.py'])), 'app/util.py');
+assert.strictEqual(resolveImport('src/a.ts', 'react', new Set(['src/b.ts'])), undefined);
+
+const sources = new Map([
+  ['src/a.ts', `import b from './b';`],
+  ['src/b.ts', `export const b = 1;`],
+]);
+assert.deepStrictEqual(buildEdges(sources), [{ from: 'src/a.ts', to: 'src/b.ts' }]);
+// b is imported by a, so b is reviewed first; cycles fall back to input order
+assert.deepStrictEqual(reviewOrder(['src/a.ts', 'src/b.ts'], buildEdges(sources)), ['src/b.ts', 'src/a.ts']);
+assert.deepStrictEqual(
+  reviewOrder(['x', 'y'], [{ from: 'x', to: 'y' }, { from: 'y', to: 'x' }]),
+  ['x', 'y']
+);
+
+// Summary export: action items with quoted code, plus the full file list
+const md = buildSummaryMd({
+  rangeLabel: 'aaa..bbb',
+  files: [
+    {
+      path: 'src/a.ts',
+      status: 'M',
+      risks: [],
+      reviewed: true,
+      note: 'looks fine overall',
+      comments: [{ line: 42, text: 'do not hardcode this', code: 'const t = 5000;' }],
+    },
+    { path: 'package-lock.json', status: 'M', risks: ['lockfile'], reviewed: false, comments: [] },
+  ],
+});
+for (const expected of [
+  '# Code review feedback (aaa..bbb)',
+  '### src/a.ts:42',
+  'const t = 5000;',
+  'do not hardcode this',
+  'looks fine overall',
+  '- `package-lock.json` — Modified, NOT reviewed, ⚠ lockfile',
+]) {
+  assert.ok(md.includes(expected), `summary missing: ${expected}`);
+}

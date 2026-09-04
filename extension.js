@@ -94,6 +94,114 @@ function riskReasons(file) {
 
 const STATUS_LABEL = { A: 'Added', M: 'Modified', D: 'Deleted', R: 'Renamed', C: 'Copied' };
 
+// --- Dependency analysis (import-level, heuristic) ---------------------------
+
+const JS_EXTS = ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs'];
+const JS_IMPORT_RES = [
+  /import\s+[^'"()]*?from\s+['"]([^'"]+)['"]/g,
+  /import\s*\(\s*['"]([^'"]+)['"]/g,
+  /require\s*\(\s*['"]([^'"]+)['"]/g,
+  /export\s+[^'"()]*?from\s+['"]([^'"]+)['"]/g,
+];
+const PY_IMPORT_RES = [/^\s*import\s+([\w.]+)/gm, /^\s*from\s+([.\w]+)\s+import/gm];
+
+// Extract import specifiers from source text, by file extension.
+function parseImports(filePath, source) {
+  const ext = path.posix.extname(filePath);
+  const regexes = ext === '.py' ? PY_IMPORT_RES : JS_EXTS.includes(ext) ? JS_IMPORT_RES : [];
+  const specs = [];
+  for (const re of regexes) {
+    re.lastIndex = 0;
+    let m;
+    while ((m = re.exec(source))) specs.push(m[1]);
+  }
+  return specs;
+}
+
+// Resolve an import specifier from `fromFile` to a path in `changedSet`, or undefined.
+function resolveImport(fromFile, spec, changedSet) {
+  const dir = path.posix.dirname(fromFile);
+  const candidates = [];
+  if (fromFile.endsWith('.py')) {
+    const rel = spec.replace(/^\.+/, '');
+    const base = rel.replace(/\./g, '/');
+    candidates.push(`${base}.py`, `${base}/__init__.py`);
+    if (spec.startsWith('.')) candidates.push(path.posix.join(dir, `${base}.py`));
+  } else if (spec.startsWith('.')) {
+    const base = path.posix.normalize(path.posix.join(dir, spec));
+    candidates.push(base);
+    for (const e of JS_EXTS) candidates.push(base + e, `${base}/index${e}`);
+  }
+  return candidates.find((c) => changedSet.has(c));
+}
+
+// Edges among changed files: {from, to} = "from imports to".
+function buildEdges(sources) {
+  const changedSet = new Set(sources.keys());
+  const edges = [];
+  for (const [file, source] of sources) {
+    for (const spec of parseImports(file, source)) {
+      const to = resolveImport(file, spec, changedSet);
+      if (to && to !== file) edges.push({ from: file, to });
+    }
+  }
+  return edges;
+}
+
+// Dependencies-first ordering: if A imports B, review B before A.
+function reviewOrder(files, edges) {
+  const indeg = new Map(files.map((f) => [f, 0]));
+  const dependents = new Map(files.map((f) => [f, []]));
+  for (const e of edges) {
+    if (!indeg.has(e.from) || !indeg.has(e.to)) continue;
+    dependents.get(e.to).push(e.from);
+    indeg.set(e.from, indeg.get(e.from) + 1);
+  }
+  const queue = files.filter((f) => indeg.get(f) === 0);
+  const order = [];
+  while (queue.length) {
+    const f = queue.shift();
+    order.push(f);
+    for (const n of dependents.get(f)) {
+      indeg.set(n, indeg.get(n) - 1);
+      if (indeg.get(n) === 0) queue.push(n);
+    }
+  }
+  for (const f of files) if (!order.includes(f)) order.push(f); // cycles keep original order
+  return order;
+}
+
+// --- Review summary export ---------------------------------------------------
+
+// data: {rangeLabel, files: [{path, status, risks, reviewed, note, comments: [{line, text, code}]}]}
+function buildSummaryMd(data) {
+  const lines = [`# Code review feedback (${data.rangeLabel})`, ''];
+  const withFeedback = data.files.filter((f) => f.note || (f.comments && f.comments.length));
+  if (withFeedback.length) {
+    lines.push('## Action items', '');
+    for (const f of withFeedback) {
+      if (f.note) lines.push(`### ${f.path}`, '', f.note, '');
+      for (const c of f.comments || []) {
+        lines.push(`### ${f.path}:${c.line}`, '');
+        if (c.code) lines.push('```', c.code, '```');
+        lines.push(c.text, '');
+      }
+    }
+  } else {
+    lines.push('_No notes or comments._', '');
+  }
+  lines.push('## Files in this change', '');
+  for (const f of data.files) {
+    const flags = [
+      STATUS_LABEL[f.status] || f.status,
+      f.reviewed ? 'reviewed ✓' : 'NOT reviewed',
+      ...(f.risks.length ? [`⚠ ${f.risks.join(', ')}`] : []),
+    ];
+    lines.push(`- \`${f.path}\` — ${flags.join(', ')}`);
+  }
+  return lines.join('\n') + '\n';
+}
+
 // URI the built-in git extension's content provider understands.
 function gitUri(repoRoot, filePath, ref) {
   const abs = path.join(repoRoot, filePath);
@@ -147,6 +255,15 @@ class CommitTreeProvider {
 
   notes() {
     return this.state.get('cft.notes', {});
+  }
+
+  comments() {
+    return this.state.get('cft.comments', {});
+  }
+
+  commentsFor(ctx, filePath) {
+    const store = this.comments();
+    return [ctx.target, ctx.base, 'working'].flatMap((ref) => store[`${ref}:${filePath}`] || []);
   }
 
   async toggleReviewed(item) {
@@ -309,13 +426,16 @@ class CommitTreeProvider {
         item.resourceUri = vscode.Uri.file(path.join(this.repoRoot, f.path)).with({
           query: `cftStatus=${f.status}&rev=${isReviewed ? 1 : 0}`,
         });
+        const comments = this.commentsFor(ctx, f.path);
         const markers = [];
         if (risks.length && !isReviewed) markers.push(`⚠ ${risks.join(', ')}`);
         if (note) markers.push('📝');
+        if (comments.length) markers.push(`💬${comments.length}`);
         item.description = markers.join(' ') || undefined;
         const lines = [`${STATUS_LABEL[f.status] || f.status}: ${f.path}`];
         if (risks.length) lines.push(`⚠ Review carefully: ${risks.join(', ')}`);
         if (note) lines.push(`📝 ${note}`);
+        for (const c of comments) lines.push(`💬 L${c.line}: ${c.text}`);
         if (isReviewed) lines.push('✓ Reviewed');
         item.tooltip = lines.join('\n');
         item.command = {
@@ -337,6 +457,26 @@ const STATUS_COLOR = {
   R: 'gitDecoration.renamedResourceForeground',
   C: 'gitDecoration.addedResourceForeground',
 };
+
+// Identify a document as (ref, repo-relative path), for comment storage.
+// git-scheme URIs carry {path, ref} in their query; file-scheme = working copy.
+function locOf(uri, root) {
+  if (!root) return undefined;
+  if (uri.scheme === 'git') {
+    try {
+      const q = JSON.parse(uri.query);
+      const rel = path.relative(root, q.path);
+      return rel.startsWith('..') ? undefined : { ref: q.ref, rel };
+    } catch (e) {
+      return undefined;
+    }
+  }
+  if (uri.scheme === 'file') {
+    const rel = path.relative(root, uri.fsPath);
+    return rel.startsWith('..') ? undefined : { ref: 'working', rel };
+  }
+  return undefined;
+}
 
 function changeResources(root, files, ctx) {
   return files.map((f) => [
@@ -394,7 +534,174 @@ function activate(context) {
     }
   }
 
+  // --- Line comments (native Comments API) ---
+  const controller = vscode.comments.createCommentController('commitFileTree', 'Commit Review Tree');
+  controller.commentingRangeProvider = {
+    provideCommentingRanges(document) {
+      if (!locOf(document.uri, provider.repoRoot)) return [];
+      return [new vscode.Range(0, 0, Math.max(document.lineCount - 1, 0), 0)];
+    },
+  };
+  const liveThreads = new Map(); // "<ref>:<rel>:<line>" -> CommentThread
+
+  function commentBody(text) {
+    return { body: new vscode.MarkdownString(text), mode: vscode.CommentMode.Preview, author: { name: 'review' } };
+  }
+
+  async function saveComment(reply) {
+    const loc = locOf(reply.thread.uri, provider.repoRoot);
+    if (!loc || !reply.text) return;
+    const line = reply.thread.range.start.line + 1; // store 1-based
+    const store = { ...provider.comments() };
+    const key = `${loc.ref}:${loc.rel}`;
+    store[key] = [...(store[key] || []), { line, text: reply.text }];
+    await provider.state.update('cft.comments', store);
+    reply.thread.comments = [...reply.thread.comments, commentBody(reply.text)];
+    reply.thread.canReply = true;
+    liveThreads.set(`${key}:${line}`, reply.thread);
+    provider.refresh();
+  }
+
+  async function deleteThread(thread) {
+    const loc = locOf(thread.uri, provider.repoRoot);
+    if (loc) {
+      const line = thread.range.start.line + 1;
+      const store = { ...provider.comments() };
+      const key = `${loc.ref}:${loc.rel}`;
+      store[key] = (store[key] || []).filter((c) => c.line !== line);
+      if (!store[key].length) delete store[key];
+      await provider.state.update('cft.comments', store);
+      liveThreads.delete(`${key}:${line}`);
+      provider.refresh();
+    }
+    thread.dispose();
+  }
+
+  // Re-create persisted threads when a matching document opens.
+  function restoreThreads(document) {
+    const loc = locOf(document.uri, provider.repoRoot);
+    if (!loc) return;
+    const key = `${loc.ref}:${loc.rel}`;
+    for (const c of provider.comments()[key] || []) {
+      const threadKey = `${key}:${c.line}`;
+      if (liveThreads.has(threadKey)) continue;
+      const range = new vscode.Range(c.line - 1, 0, c.line - 1, 0);
+      const thread = controller.createCommentThread(document.uri, range, [commentBody(c.text)]);
+      thread.canReply = true;
+      thread.collapsibleState = vscode.CommentThreadCollapsibleState.Collapsed;
+      liveThreads.set(threadKey, thread);
+    }
+  }
+  vscode.workspace.textDocuments.forEach(restoreThreads);
+
+  // --- Export review summary ---
+  async function exportSummary() {
+    const root = provider.repoRoot;
+    if (!root) return;
+    let ctx;
+    try {
+      ctx = await provider.getUnpushedRange(root);
+    } catch (e) {
+      vscode.window.showWarningMessage('Commit Review Tree: no upstream branch — nothing to summarize.');
+      return;
+    }
+    const files = parseNameStatus(await git(root, ['diff', '--name-status', ctx.base, ctx.target]));
+    const shas = (await git(root, ['rev-list', `${ctx.base}..${ctx.target}`])).split('\n').filter(Boolean);
+    const refs = new Set([...shas, ctx.base, ctx.target, 'working']);
+    const reviewed = provider.reviewed();
+    const notes = provider.notes();
+    const store = provider.comments();
+    const data = {
+      rangeLabel: `${ctx.base.slice(0, 7)}..${ctx.target.slice(0, 7)}`,
+      files: await Promise.all(
+        files.map(async (f) => {
+          const comments = [];
+          for (const [key, list] of Object.entries(store)) {
+            const [ref, rel] = [key.slice(0, key.indexOf(':')), key.slice(key.indexOf(':') + 1)];
+            if (rel !== f.path || !refs.has(ref)) continue;
+            let content;
+            for (const c of list) {
+              if (content === undefined && f.status !== 'D') {
+                content = await git(root, ['show', `${ctx.target}:${f.path}`]).catch(() => '');
+              }
+              const code = content ? (content.split('\n')[c.line - 1] || '').trim() : '';
+              comments.push({ line: c.line, text: c.text, code });
+            }
+          }
+          comments.sort((a, b) => a.line - b.line);
+          const anyRef = [...refs].find((r) => reviewed[`${r}:${f.path}`] || notes[`${r}:${f.path}`]);
+          return {
+            path: f.path,
+            status: f.status,
+            risks: riskReasons(f),
+            reviewed: !!(anyRef && reviewed[`${anyRef}:${f.path}`]),
+            note: anyRef ? notes[`${anyRef}:${f.path}`] : undefined,
+            comments,
+          };
+        })
+      ),
+    };
+    const md = buildSummaryMd(data);
+    await vscode.env.clipboard.writeText(md);
+    const doc = await vscode.workspace.openTextDocument({ content: md, language: 'markdown' });
+    await vscode.window.showTextDocument(doc);
+    vscode.window.showInformationMessage('Review summary copied to clipboard.');
+  }
+
+  // --- Dependency graph & review order ---
+  async function showGraph() {
+    const root = provider.repoRoot;
+    if (!root) return;
+    let ctx;
+    try {
+      ctx = await provider.getUnpushedRange(root);
+    } catch (e) {
+      vscode.window.showWarningMessage('Commit Review Tree: no upstream branch — nothing to analyze.');
+      return;
+    }
+    const files = parseNameStatus(await git(root, ['diff', '--name-status', ctx.base, ctx.target]));
+    const sources = new Map();
+    for (const f of files) {
+      const ref = f.status === 'D' ? ctx.base : ctx.target;
+      const content = await git(root, ['show', `${ref}:${f.path}`]).catch(() => '');
+      sources.set(f.path, content);
+    }
+    const edges = buildEdges(sources);
+    const order = reviewOrder([...sources.keys()], edges);
+    const id = (f) => 'n' + order.indexOf(f);
+    const lines = [
+      `# Suggested review order (${ctx.base.slice(0, 7)}..${ctx.target.slice(0, 7)})`,
+      '',
+      'Dependencies first — files imported by other changed files come before their importers.',
+      '',
+      ...order.map((f, i) => `${i + 1}. \`${f}\``),
+      '',
+      '## Dependency graph (importer → imported)',
+      '',
+      '```mermaid',
+      'flowchart LR',
+      ...order.map((f) => `  ${id(f)}["${f}"]`),
+      ...edges.map((e) => `  ${id(e.from)} --> ${id(e.to)}`),
+      '```',
+      '',
+      ...(edges.length
+        ? edges.map((e) => `- \`${e.from}\` imports \`${e.to}\``)
+        : ['_No import relationships detected among the changed files._']),
+      '',
+      '_Import detection is heuristic (JS/TS/Python static imports only)._',
+    ];
+    const doc = await vscode.workspace.openTextDocument({ content: lines.join('\n'), language: 'markdown' });
+    await vscode.window.showTextDocument(doc);
+    vscode.commands.executeCommand('markdown.showPreview', doc.uri);
+  }
+
   context.subscriptions.push(
+    controller,
+    vscode.workspace.onDidOpenTextDocument(restoreThreads),
+    vscode.commands.registerCommand('commitFileTree.addComment', saveComment),
+    vscode.commands.registerCommand('commitFileTree.deleteThread', deleteThread),
+    vscode.commands.registerCommand('commitFileTree.exportSummary', exportSummary),
+    vscode.commands.registerCommand('commitFileTree.showGraph', showGraph),
     vscode.window.registerTreeDataProvider('commitFileTree', provider),
     vscode.window.registerFileDecorationProvider({
       provideFileDecoration(uri) {
@@ -459,5 +766,10 @@ module.exports = {
   parseLog,
   compactDir,
   riskReasons,
+  parseImports,
+  resolveImport,
+  buildEdges,
+  reviewOrder,
+  buildSummaryMd,
   CommitTreeProvider,
 };

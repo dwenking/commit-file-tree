@@ -65,6 +65,26 @@
         "icon": "$(edit)"
       },
       {
+        "command": "commitFileTree.exportSummary",
+        "title": "Export Review Summary (copy for AI)",
+        "icon": "$(export)"
+      },
+      {
+        "command": "commitFileTree.showGraph",
+        "title": "Show Review Order & Dependency Graph",
+        "icon": "$(type-hierarchy)"
+      },
+      {
+        "command": "commitFileTree.addComment",
+        "title": "Add Review Comment",
+        "enablement": "commentController == commitFileTree"
+      },
+      {
+        "command": "commitFileTree.deleteThread",
+        "title": "Delete Review Comment",
+        "icon": "$(trash)"
+      },
+      {
         "command": "commitFileTree.loadMore",
         "title": "Show Pushed History"
       },
@@ -102,6 +122,30 @@
           "command": "commitFileTree.refresh",
           "when": "view == commitFileTree",
           "group": "navigation@3"
+        },
+        {
+          "command": "commitFileTree.exportSummary",
+          "when": "view == commitFileTree",
+          "group": "1_review@1"
+        },
+        {
+          "command": "commitFileTree.showGraph",
+          "when": "view == commitFileTree",
+          "group": "1_review@2"
+        }
+      ],
+      "comments/commentThread/context": [
+        {
+          "command": "commitFileTree.addComment",
+          "when": "commentController == commitFileTree",
+          "group": "inline"
+        }
+      ],
+      "comments/commentThread/title": [
+        {
+          "command": "commitFileTree.deleteThread",
+          "when": "commentController == commitFileTree",
+          "group": "navigation"
         }
       ],
       "view/item/context": [
@@ -163,6 +207,14 @@
         },
         {
           "command": "commitFileTree.editNote",
+          "when": "false"
+        },
+        {
+          "command": "commitFileTree.addComment",
+          "when": "false"
+        },
+        {
+          "command": "commitFileTree.deleteThread",
           "when": "false"
         }
       ]
