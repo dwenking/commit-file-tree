@@ -8,7 +8,10 @@ A Cursor/VS Code extension for reviewing AI-generated commits fast. It adds a **
 - **Two view modes** — toggle from the view title bar between *by commits* (expand each commit into its file tree) and *combined* (all unpushed changes as one tree, diffed against the upstream — ideal when the AI made many intermediate commits and you only care about the net result).
 - **Review all changes in one click** — the multi-diff button on the view title (or on a single commit) opens every changed file's diff stacked in one editor tab.
 - **Reviewed checkmarks** — mark files as reviewed from the hover actions; they turn dim with a ✓ badge, and the state persists per workspace so interrupted reviews resume where you left off.
-- **Notes** — attach a note to any file (hover action); shown as 📝 in the row and in the tooltip.
+- **Line-level comments** — GitHub-style review comments right in the diff: click the "+" in the gutter, type, done. Threads persist per commit (and re-appear when you reopen the diff), files show a 💬 count in the tree, and comments can be deleted from the thread title bar.
+- **Export review summary for AI** — one command collects every note, line comment (with the quoted code line), reviewed state, and risk flag into a markdown report, copies it to the clipboard, and opens it — paste it straight into your AI agent as the fix list.
+- **Suggested review order + dependency graph** — analyzes imports among the changed files (JS/TS/Python, heuristic) and produces a dependencies-first review order with a Mermaid graph of who imports whom, so you review foundations before callers.
+- **Notes** — attach a file-level note (hover action); shown as 📝 in the row and in the tooltip.
 - **Risk flags for scope drift** — files an AI session usually shouldn't touch are flagged with ⚠ and a reason: deletions, lockfiles, CI config, env files, container and build config.
 - **Folder tree with native styling** — real directory nesting with single-child chains compacted (`src/utils/git`), files colored and badged like the built-in SCM view, blue dots for unpushed commits, dimmed for pushed.
 - **Click to view changes** — modified files open a side-by-side diff; added files open the new content, deleted files the old. Root commits are handled correctly.
