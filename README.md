@@ -4,7 +4,7 @@ A Cursor/VS Code extension that adds a **Commit File Tree** panel to the Source 
 
 ## Features
 
-- **Commit history in the sidebar** — lists recent commits with subject, short hash, relative time, and diff stats (`3 files +10 −2`); a "Load more…" entry pages further back in history.
+- **Your work first** — by default the list shows only your local unpushed commits (`@{upstream}..HEAD`) with subject, short hash, relative time, and diff stats (`3 files +10 −2`); "Load more…" pages in remote history 50 commits at a time (marked with a history icon). Repos without an upstream show plain history.
 - **Folder tree per commit** — expand a commit to see its changed files nested under their real directories, sorted folders-first, with single-child folder chains compacted into one label (`src/utils/git`).
 - **Change status at a glance** — each file is marked Added / Modified / Deleted / Renamed, with the full path and status in the tooltip.
 - **Commit context menu** — right-click a commit to copy its hash or message.
