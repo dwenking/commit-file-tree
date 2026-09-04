@@ -3,7 +3,7 @@
   "displayName": "Commit File Tree",
   "description": "Browse each commit's changed files as a clear file tree in the Source Control view.",
   "version": "0.0.1",
-  "publisher": "wenkingd",
+  "publisher": "dwenking",
   "license": "MIT",
   "repository": {
     "type": "git",
