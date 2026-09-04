@@ -2,7 +2,7 @@
   "name": "commit-file-tree",
   "displayName": "Commit Review Tree",
   "description": "Review AI-generated commits fast: unpushed work as a file tree, combined or per-commit, with multi-diff review, reviewed checkmarks, notes, risk flags, and revert.",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "publisher": "dwenking",
   "icon": "icon.png",
   "license": "MIT",
@@ -104,34 +104,34 @@
     "menus": {
       "view/title": [
         {
-          "command": "commitFileTree.viewCombined",
-          "when": "view == commitFileTree && commitFileTree.mode == commits",
+          "command": "commitFileTree.viewByCommits",
+          "when": "view == commitFileTree && commitFileTree.mode != commits",
           "group": "navigation@1"
+        },
+        {
+          "command": "commitFileTree.viewCombined",
+          "when": "view == commitFileTree && commitFileTree.mode != combined",
+          "group": "navigation@2"
         },
         {
           "command": "commitFileTree.viewByDeps",
-          "when": "view == commitFileTree && commitFileTree.mode == combined",
-          "group": "navigation@1"
-        },
-        {
-          "command": "commitFileTree.viewByCommits",
-          "when": "view == commitFileTree && commitFileTree.mode == deps",
-          "group": "navigation@1"
+          "when": "view == commitFileTree && commitFileTree.mode != deps",
+          "group": "navigation@3"
         },
         {
           "command": "commitFileTree.reviewAll",
           "when": "view == commitFileTree",
-          "group": "navigation@2"
+          "group": "navigation@4"
         },
         {
           "command": "commitFileTree.exportSummary",
           "when": "view == commitFileTree",
-          "group": "navigation@3"
+          "group": "navigation@5"
         },
         {
           "command": "commitFileTree.refresh",
           "when": "view == commitFileTree",
-          "group": "navigation@4"
+          "group": "navigation@6"
         }
       ],
       "comments/commentThread/context": [
