@@ -141,9 +141,17 @@ function activate(context) {
     vscode.commands.registerCommand('commitFileTree.openDiff', (filePath, status, sha) => {
       const root = provider.repoRoot;
       if (!root) return;
+      const title = `${path.basename(filePath)} (${sha.slice(0, 7)})`;
+      // Added: no parent-side version (may even be a root commit) — open the new content.
+      if (status === 'A') {
+        return vscode.commands.executeCommand('vscode.open', gitUri(root, filePath, sha));
+      }
+      // Deleted: no version at sha — open the old content.
+      if (status === 'D') {
+        return vscode.commands.executeCommand('vscode.open', gitUri(root, filePath, `${sha}~1`));
+      }
       const left = gitUri(root, filePath, `${sha}~1`);
       const right = gitUri(root, filePath, sha);
-      const title = `${path.basename(filePath)} (${sha.slice(0, 7)})`;
       return vscode.commands.executeCommand('vscode.diff', left, right, title);
     })
   );
