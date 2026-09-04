@@ -32,7 +32,7 @@ const files = parseNameStatus('M\tsrc/a/one.js\nA\tsrc/two.js\nR100\told.js\tnew
 assert.deepStrictEqual(files, [
   { status: 'M', path: 'src/a/one.js' },
   { status: 'A', path: 'src/two.js' },
-  { status: 'R', path: 'new.js' },
+  { status: 'R', path: 'new.js', oldPath: 'old.js' },
   { status: 'D', path: 'README.md' },
 ]);
 

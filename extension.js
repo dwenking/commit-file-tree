@@ -11,15 +11,18 @@ function git(cwd, args) {
   });
 }
 
-// Parse `git show --name-status` lines into [{status, path}].
-// Renames/copies (R100\told\tnew) use the new path.
+// Parse `git show --name-status` lines into [{status, path, oldPath?}].
+// Renames/copies (R100\told\tnew) use the new path; oldPath keeps the origin,
+// needed to show the base side of the diff (the new path doesn't exist there).
 function parseNameStatus(output) {
   const files = [];
   for (const line of output.split('\n')) {
     const parts = line.split('\t');
     if (parts.length < 2 || !parts[0]) continue;
     const status = parts[0][0];
-    files.push({ status, path: parts[parts.length - 1] });
+    const f = { status, path: parts[parts.length - 1] };
+    if (parts.length > 2) f.oldPath = parts[1];
+    files.push(f);
   }
   return files;
 }
@@ -34,7 +37,7 @@ function buildTree(files) {
       if (!node.dirs.has(seg)) node.dirs.set(seg, { dirs: new Map(), files: [] });
       node = node.dirs.get(seg);
     }
-    node.files.push({ name: segments[segments.length - 1], status: f.status, path: f.path });
+    node.files.push({ name: segments[segments.length - 1], status: f.status, path: f.path, oldPath: f.oldPath });
   }
   return root;
 }
@@ -460,7 +463,7 @@ class CommitTreeProvider {
     item.command = {
       command: 'commitFileTree.openDiff',
       title: 'Open Diff',
-      arguments: [f.path, f.status, ctx],
+      arguments: [f.path, f.status, ctx, f.oldPath],
     };
     return item;
   }
@@ -516,7 +519,7 @@ function locOf(uri, root) {
 function changeResources(root, files, ctx) {
   return files.map((f) => [
     vscode.Uri.file(path.join(root, f.path)),
-    f.status === 'A' ? undefined : gitUri(root, f.path, ctx.base),
+    f.status === 'A' ? undefined : gitUri(root, f.oldPath || f.path, ctx.base),
     f.status === 'D' ? undefined : gitUri(root, f.path, ctx.target),
   ]);
 }
@@ -725,7 +728,7 @@ function activate(context) {
     vscode.commands.registerCommand('commitFileTree.copyMessage', (item) =>
       vscode.env.clipboard.writeText(item.subject)
     ),
-    vscode.commands.registerCommand('commitFileTree.openDiff', (filePath, status, ctx) => {
+    vscode.commands.registerCommand('commitFileTree.openDiff', (filePath, status, ctx, oldPath) => {
       const root = provider.repoRoot;
       if (!root) return;
       const title = `${path.basename(filePath)} (${ctx.target.slice(0, 7)})`;
@@ -737,7 +740,8 @@ function activate(context) {
       if (status === 'D') {
         return vscode.commands.executeCommand('vscode.open', gitUri(root, filePath, ctx.base));
       }
-      const left = gitUri(root, filePath, ctx.base);
+      // Renames/copies: the base side lives at the old path.
+      const left = gitUri(root, oldPath || filePath, ctx.base);
       const right = gitUri(root, filePath, ctx.target);
       return vscode.commands.executeCommand('vscode.diff', left, right, title);
     })
