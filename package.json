@@ -1,0 +1,39 @@
+{
+  "name": "commit-file-tree",
+  "displayName": "Commit File Tree",
+  "description": "Browse each commit's changed files as a clear file tree in the Source Control view.",
+  "version": "0.0.1",
+  "publisher": "wenkingd",
+  "engines": {
+    "vscode": "^1.70.0"
+  },
+  "categories": ["SCM Providers"],
+  "main": "./extension.js",
+  "activationEvents": ["onView:commitFileTree"],
+  "contributes": {
+    "views": {
+      "scm": [
+        {
+          "id": "commitFileTree",
+          "name": "Commit File Tree"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "commitFileTree.refresh",
+        "title": "Refresh",
+        "icon": "$(refresh)"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "commitFileTree.refresh",
+          "when": "view == commitFileTree",
+          "group": "navigation"
+        }
+      ]
+    }
+  }
+}
