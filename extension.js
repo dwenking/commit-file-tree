@@ -81,11 +81,12 @@ class CommitTreeProvider {
   constructor() {
     this._onDidChangeTreeData = new vscode.EventEmitter();
     this.onDidChangeTreeData = this._onDidChangeTreeData.event;
-    this.limit = 50;
+    // Number of remote-history commits to show below the local (unpushed) ones.
+    this.extra = 0;
   }
 
   loadMore() {
-    this.limit += 50;
+    this.extra += 50;
     this.refresh();
   }
 
@@ -123,30 +124,43 @@ class CommitTreeProvider {
   }
 
   async getCommits(root) {
-    const out = await git(root, [
-      'log',
-      `-${this.limit}`,
-      '--shortstat',
-      '--format=%H%x09%h%x09%an%x09%ar%x09%s',
-    ]);
-    const commits = parseLog(out);
-    const items = commits.map((c) => {
-      const item = new vscode.TreeItem(c.subject, vscode.TreeItemCollapsibleState.Collapsed);
-      item.contextValue = 'commit';
-      item.sha = c.sha;
-      item.subject = c.subject;
-      item.description = `${c.files} files +${c.ins} −${c.del} · ${c.short} · ${c.when}`;
-      item.tooltip = `${c.subject}\n${c.sha}\n${c.author}, ${c.when}\n${c.files} files changed, +${c.ins} −${c.del}`;
-      item.iconPath = new vscode.ThemeIcon('git-commit');
-      return item;
-    });
-    if (commits.length === this.limit) {
+    const FORMAT = '--format=%H%x09%h%x09%an%x09%ar%x09%s';
+    // Local (unpushed) commits are the focus; remote history is behind "Load more".
+    let local = [];
+    let hasUpstream = true;
+    try {
+      local = parseLog(await git(root, ['log', '@{upstream}..HEAD', '--shortstat', FORMAT]));
+    } catch (e) {
+      hasUpstream = false; // no upstream configured — fall back to plain history
+    }
+    let history = [];
+    const historyLimit = hasUpstream ? this.extra : this.extra + 50;
+    if (historyLimit > 0) {
+      const base = hasUpstream ? '@{upstream}' : 'HEAD';
+      history = parseLog(await git(root, ['log', `-${historyLimit}`, base, '--shortstat', FORMAT]));
+    }
+    const items = [
+      ...local.map((c) => this.commitItem(c, 'git-commit')),
+      ...history.map((c) => this.commitItem(c, 'history')),
+    ];
+    if (historyLimit === 0 || history.length === historyLimit) {
       const more = new vscode.TreeItem('Load more…', vscode.TreeItemCollapsibleState.None);
       more.iconPath = new vscode.ThemeIcon('ellipsis');
       more.command = { command: 'commitFileTree.loadMore', title: 'Load More' };
       items.push(more);
     }
     return items;
+  }
+
+  commitItem(c, icon) {
+    const item = new vscode.TreeItem(c.subject, vscode.TreeItemCollapsibleState.Collapsed);
+    item.contextValue = 'commit';
+    item.sha = c.sha;
+    item.subject = c.subject;
+    item.description = `${c.files} files +${c.ins} −${c.del} · ${c.short} · ${c.when}`;
+    item.tooltip = `${c.subject}\n${c.sha}\n${c.author}, ${c.when}\n${c.files} files changed, +${c.ins} −${c.del}`;
+    item.iconPath = new vscode.ThemeIcon(icon);
+    return item;
   }
 
   getTreeNodes(node, sha) {
@@ -213,4 +227,12 @@ function activate(context) {
 
 function deactivate() {}
 
-module.exports = { activate, deactivate, parseNameStatus, buildTree, parseLog, compactDir };
+module.exports = {
+  activate,
+  deactivate,
+  parseNameStatus,
+  buildTree,
+  parseLog,
+  compactDir,
+  CommitTreeProvider,
+};

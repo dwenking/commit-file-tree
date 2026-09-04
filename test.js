@@ -7,8 +7,14 @@ Module._resolveFilename = function (request, ...args) {
   return origResolve.call(this, request, ...args);
 };
 module.exports.Uri = { file: () => ({ with: () => ({}) }) };
-module.exports.EventEmitter = class {};
-module.exports.TreeItem = class {};
+module.exports.EventEmitter = class {
+  fire() {}
+};
+module.exports.TreeItem = class {
+  constructor(label) {
+    this.label = label;
+  }
+};
 module.exports.TreeItemCollapsibleState = {};
 module.exports.ThemeIcon = class {};
 
@@ -51,4 +57,33 @@ const mixed = buildTree([
 ]);
 assert.strictEqual(compactDir('a', mixed.dirs.get('a')).name, 'a');
 
-console.log('ok');
+// Local-vs-history split: unpushed commits show by default, history behind Load more.
+const { CommitTreeProvider } = require('./extension.js');
+const os = require('os');
+const fs = require('fs');
+const path = require('path');
+const cp = require('child_process');
+
+(async () => {
+  const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'cft-'));
+  const sh = (cmd) => cp.execSync(cmd, { cwd: repo, stdio: 'pipe' });
+  sh('git init -q -b main && git config user.email t@t && git config user.name t');
+  for (const n of [1, 2, 3]) {
+    fs.writeFileSync(path.join(repo, `f${n}`), String(n));
+    sh(`git add . && git commit -qm c${n}`);
+  }
+  sh('git branch up HEAD~2 && git branch --set-upstream-to=up');
+
+  const provider = new CommitTreeProvider();
+  let items = await provider.getCommits(repo);
+  // c3, c2 are unpushed; "Load more…" hides the single history commit c1
+  assert.deepStrictEqual(items.map((i) => i.label), ['c3', 'c2', 'Load more…']);
+
+  provider.loadMore();
+  items = await provider.getCommits(repo);
+  // history exhausted (1 < 50), so no trailing Load more
+  assert.deepStrictEqual(items.map((i) => i.label), ['c3', 'c2', 'c1']);
+
+  fs.rmSync(repo, { recursive: true, force: true });
+  console.log('ok');
+})();

@@ -2,7 +2,7 @@
   "name": "commit-file-tree",
   "displayName": "Commit File Tree",
   "description": "Browse each commit's changed files as a clear file tree in the Source Control view.",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "publisher": "dwenking",
   "icon": "icon.png",
   "license": "MIT",
@@ -13,9 +13,13 @@
   "engines": {
     "vscode": "^1.70.0"
   },
-  "categories": ["SCM Providers"],
+  "categories": [
+    "SCM Providers"
+  ],
   "main": "./extension.js",
-  "activationEvents": ["onView:commitFileTree"],
+  "activationEvents": [
+    "onView:commitFileTree"
+  ],
   "contributes": {
     "views": {
       "scm": [
