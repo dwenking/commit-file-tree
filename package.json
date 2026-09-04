@@ -2,7 +2,7 @@
   "name": "commit-file-tree",
   "displayName": "Commit File Tree",
   "description": "Browse each commit's changed files as a clear file tree in the Source Control view.",
-  "version": "0.0.5",
+  "version": "0.0.6",
   "publisher": "dwenking",
   "icon": "icon.png",
   "license": "MIT",
@@ -37,7 +37,11 @@
       },
       {
         "command": "commitFileTree.loadMore",
-        "title": "Load More Commits"
+        "title": "Show Pushed History"
+      },
+      {
+        "command": "commitFileTree.hideHistory",
+        "title": "Hide Pushed History"
       },
       {
         "command": "commitFileTree.copySha",
@@ -69,6 +73,10 @@
       "commandPalette": [
         {
           "command": "commitFileTree.loadMore",
+          "when": "false"
+        },
+        {
+          "command": "commitFileTree.hideHistory",
           "when": "false"
         },
         {

@@ -85,8 +85,12 @@ const cp = require('child_process');
 
   provider.loadMore();
   items = await provider.getCommits(repo);
-  // history exhausted (1 < 50), so no trailing Load more
-  assert.deepStrictEqual(items.map((i) => i.label), ['c3', 'c2', 'c1']);
+  // history exhausted (1 < 50): no "show more", but a way back
+  assert.deepStrictEqual(items.map((i) => i.label), ['c3', 'c2', 'c1', 'Hide pushed history']);
+
+  provider.hideHistory();
+  items = await provider.getCommits(repo);
+  assert.deepStrictEqual(items.map((i) => i.label), ['c3', 'c2', 'Show pushed history…']);
 
   fs.rmSync(repo, { recursive: true, force: true });
   console.log('ok');

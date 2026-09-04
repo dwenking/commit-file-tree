@@ -90,6 +90,11 @@ class CommitTreeProvider {
     this.refresh();
   }
 
+  hideHistory() {
+    this.extra = 0;
+    this.refresh();
+  }
+
   refresh() {
     this._onDidChangeTreeData.fire();
   }
@@ -155,6 +160,12 @@ class CommitTreeProvider {
       more.description = hasUpstream ? 'commits already on the remote' : 'older commits';
       more.command = { command: 'commitFileTree.loadMore', title: 'Show Pushed History' };
       items.push(more);
+    }
+    if (this.extra > 0) {
+      const hide = new vscode.TreeItem('Hide pushed history', vscode.TreeItemCollapsibleState.None);
+      hide.iconPath = new vscode.ThemeIcon('fold-up');
+      hide.command = { command: 'commitFileTree.hideHistory', title: 'Hide Pushed History' };
+      items.push(hide);
     }
     return items;
   }
@@ -236,6 +247,7 @@ function activate(context) {
     }),
     vscode.commands.registerCommand('commitFileTree.refresh', () => provider.refresh()),
     vscode.commands.registerCommand('commitFileTree.loadMore', () => provider.loadMore()),
+    vscode.commands.registerCommand('commitFileTree.hideHistory', () => provider.hideHistory()),
     vscode.commands.registerCommand('commitFileTree.copySha', (item) =>
       vscode.env.clipboard.writeText(item.sha)
     ),
