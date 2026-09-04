@@ -4,6 +4,11 @@
   "description": "Browse each commit's changed files as a clear file tree in the Source Control view.",
   "version": "0.0.1",
   "publisher": "wenkingd",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/dwenking/commit-file-tree.git"
+  },
   "engines": {
     "vscode": "^1.70.0"
   },
