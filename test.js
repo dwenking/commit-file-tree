@@ -75,10 +75,12 @@ const cp = require('child_process');
   const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'cft-'));
   const sh = (cmd) => cp.execSync(cmd, { cwd: repo, stdio: 'pipe' });
   sh('git init -q -b main && git config user.email t@t && git config user.name t');
-  for (const n of [1, 2, 3]) {
-    fs.writeFileSync(path.join(repo, `f${n}`), String(n));
-    sh(`git add . && git commit -qm c${n}`);
-  }
+  fs.writeFileSync(path.join(repo, 'f1'), '1');
+  sh('git add . && git commit -qm c1');
+  fs.writeFileSync(path.join(repo, 'f2.js'), 'exports.x = 1;');
+  sh('git add . && git commit -qm c2');
+  fs.writeFileSync(path.join(repo, 'f3.js'), "const { x } = require('./f2');");
+  sh('git add . && git commit -qm c3');
   sh('git branch up HEAD~2 && git branch --set-upstream-to=up');
 
   const provider = new CommitTreeProvider();
@@ -95,12 +97,21 @@ const cp = require('child_process');
   items = await provider.getCommits(repo);
   assert.deepStrictEqual(items.map((i) => i.label), ['c3', 'c2', 'Show pushed history…']);
 
-  // Combined mode: one tree for everything unpushed (f2, f3 from c2/c3)
+  // Combined mode: one tree for everything unpushed (f2.js, f3.js from c2/c3)
   Object.defineProperty(provider, 'repoRoot', { value: repo });
   provider.setMode('combined');
   items = await provider.getCombined(repo);
-  assert.deepStrictEqual(items.map((i) => i.label).sort(), ['f2', 'f3']);
+  assert.deepStrictEqual(items.map((i) => i.label).sort(), ['f2.js', 'f3.js']);
   assert.strictEqual(items[0].command.command, 'commitFileTree.openDiff');
+
+  // Dependency mode: f3.js imports f2.js, so f2.js is the root and f3.js its child
+  provider.setMode('deps');
+  items = await provider.getDeps(repo);
+  assert.deepStrictEqual(items.map((i) => i.label), ['f2.js']);
+  assert.strictEqual(items[0].contextValue, 'depfile');
+  const children = await provider.getChildren(items[0]);
+  assert.deepStrictEqual(children.map((i) => i.label), ['f3.js']);
+  assert.strictEqual(children[0].contextValue, 'file'); // leaf: no further importers
 
   fs.rmSync(repo, { recursive: true, force: true });
   console.log('ok');
@@ -114,7 +125,7 @@ assert.deepStrictEqual(riskReasons({ status: 'M', path: '.github/workflows/ci.ym
 assert.deepStrictEqual(riskReasons({ status: 'M', path: 'src/app.js' }), []);
 
 // Import parsing and dependency-first review order
-const { parseImports, resolveImport, buildEdges, reviewOrder, buildSummaryMd } = require('./extension.js');
+const { parseImports, resolveImport, buildEdges, buildSummaryMd } = require('./extension.js');
 assert.deepStrictEqual(
   parseImports('src/a.ts', `import x from './b';\nconst y = require('../c');\nexport { z } from './d';`),
   ['./b', '../c', './d']
@@ -133,12 +144,6 @@ const sources = new Map([
   ['src/b.ts', `export const b = 1;`],
 ]);
 assert.deepStrictEqual(buildEdges(sources), [{ from: 'src/a.ts', to: 'src/b.ts' }]);
-// b is imported by a, so b is reviewed first; cycles fall back to input order
-assert.deepStrictEqual(reviewOrder(['src/a.ts', 'src/b.ts'], buildEdges(sources)), ['src/b.ts', 'src/a.ts']);
-assert.deepStrictEqual(
-  reviewOrder(['x', 'y'], [{ from: 'x', to: 'y' }, { from: 'y', to: 'x' }]),
-  ['x', 'y']
-);
 
 // Summary export: action items with quoted code, plus the full file list
 const md = buildSummaryMd({
@@ -161,7 +166,6 @@ for (const expected of [
   'const t = 5000;',
   'do not hardcode this',
   'looks fine overall',
-  '- `package-lock.json` — Modified, NOT reviewed, ⚠ lockfile',
 ]) {
   assert.ok(md.includes(expected), `summary missing: ${expected}`);
 }

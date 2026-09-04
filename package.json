@@ -2,7 +2,7 @@
   "name": "commit-file-tree",
   "displayName": "Commit Review Tree",
   "description": "Review AI-generated commits fast: unpushed work as a file tree, combined or per-commit, with multi-diff review, reviewed checkmarks, notes, risk flags, and revert.",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "publisher": "dwenking",
   "icon": "icon.png",
   "license": "MIT",
@@ -41,6 +41,11 @@
         "icon": "$(list-flat)"
       },
       {
+        "command": "commitFileTree.viewByDeps",
+        "title": "View by Dependencies",
+        "icon": "$(type-hierarchy)"
+      },
+      {
         "command": "commitFileTree.viewByCommits",
         "title": "View by Commits",
         "icon": "$(git-commit)"
@@ -68,11 +73,6 @@
         "command": "commitFileTree.exportSummary",
         "title": "Export Review Summary (copy for AI)",
         "icon": "$(export)"
-      },
-      {
-        "command": "commitFileTree.showGraph",
-        "title": "Show Review Order & Dependency Graph",
-        "icon": "$(type-hierarchy)"
       },
       {
         "command": "commitFileTree.addComment",
@@ -105,12 +105,17 @@
       "view/title": [
         {
           "command": "commitFileTree.viewCombined",
-          "when": "view == commitFileTree && !commitFileTree.combined",
+          "when": "view == commitFileTree && commitFileTree.mode == commits",
+          "group": "navigation@1"
+        },
+        {
+          "command": "commitFileTree.viewByDeps",
+          "when": "view == commitFileTree && commitFileTree.mode == combined",
           "group": "navigation@1"
         },
         {
           "command": "commitFileTree.viewByCommits",
-          "when": "view == commitFileTree && commitFileTree.combined",
+          "when": "view == commitFileTree && commitFileTree.mode == deps",
           "group": "navigation@1"
         },
         {
@@ -119,19 +124,14 @@
           "group": "navigation@2"
         },
         {
-          "command": "commitFileTree.refresh",
+          "command": "commitFileTree.exportSummary",
           "when": "view == commitFileTree",
           "group": "navigation@3"
         },
         {
-          "command": "commitFileTree.exportSummary",
+          "command": "commitFileTree.refresh",
           "when": "view == commitFileTree",
-          "group": "1_review@1"
-        },
-        {
-          "command": "commitFileTree.showGraph",
-          "when": "view == commitFileTree",
-          "group": "1_review@2"
+          "group": "navigation@4"
         }
       ],
       "comments/commentThread/context": [
@@ -171,12 +171,12 @@
         },
         {
           "command": "commitFileTree.toggleReviewed",
-          "when": "view == commitFileTree && viewItem == file",
+          "when": "view == commitFileTree && (viewItem == file || viewItem == depfile)",
           "group": "inline@1"
         },
         {
           "command": "commitFileTree.editNote",
-          "when": "view == commitFileTree && viewItem == file",
+          "when": "view == commitFileTree && (viewItem == file || viewItem == depfile)",
           "group": "inline@2"
         }
       ],

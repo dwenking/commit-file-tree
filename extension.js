@@ -148,29 +148,6 @@ function buildEdges(sources) {
   return edges;
 }
 
-// Dependencies-first ordering: if A imports B, review B before A.
-function reviewOrder(files, edges) {
-  const indeg = new Map(files.map((f) => [f, 0]));
-  const dependents = new Map(files.map((f) => [f, []]));
-  for (const e of edges) {
-    if (!indeg.has(e.from) || !indeg.has(e.to)) continue;
-    dependents.get(e.to).push(e.from);
-    indeg.set(e.from, indeg.get(e.from) + 1);
-  }
-  const queue = files.filter((f) => indeg.get(f) === 0);
-  const order = [];
-  while (queue.length) {
-    const f = queue.shift();
-    order.push(f);
-    for (const n of dependents.get(f)) {
-      indeg.set(n, indeg.get(n) - 1);
-      if (indeg.get(n) === 0) queue.push(n);
-    }
-  }
-  for (const f of files) if (!order.includes(f)) order.push(f); // cycles keep original order
-  return order;
-}
-
 // --- Review summary export ---------------------------------------------------
 
 // data: {rangeLabel, files: [{path, status, risks, reviewed, note, comments: [{line, text, code}]}]}
@@ -189,15 +166,6 @@ function buildSummaryMd(data) {
     }
   } else {
     lines.push('_No notes or comments._', '');
-  }
-  lines.push('## Files in this change', '');
-  for (const f of data.files) {
-    const flags = [
-      STATUS_LABEL[f.status] || f.status,
-      f.reviewed ? 'reviewed ✓' : 'NOT reviewed',
-      ...(f.risks.length ? [`⚠ ${f.risks.join(', ')}`] : []),
-    ];
-    lines.push(`- \`${f.path}\` — ${flags.join(', ')}`);
   }
   return lines.join('\n') + '\n';
 }
@@ -236,7 +204,7 @@ class CommitTreeProvider {
 
   setMode(mode) {
     this.mode = mode;
-    vscode.commands.executeCommand('setContext', 'commitFileTree.combined', mode === 'combined');
+    vscode.commands.executeCommand('setContext', 'commitFileTree.mode', mode);
     this.refresh();
   }
 
@@ -297,7 +265,12 @@ class CommitTreeProvider {
     if (!root) return [];
     try {
       if (!element) {
-        return this.mode === 'combined' ? await this.getCombined(root) : await this.getCommits(root);
+        if (this.mode === 'combined') return await this.getCombined(root);
+        if (this.mode === 'deps') return await this.getDeps(root);
+        return await this.getCommits(root);
+      }
+      if (element.contextValue === 'depfile') {
+        return element.depChildren.map((p) => this.depItem(p, [...element.ancestry, p]));
       }
       if (element.contextValue === 'commit') {
         const out = await git(root, ['show', '--format=', '--name-status', element.sha]);
@@ -333,6 +306,66 @@ class CommitTreeProvider {
     if (ctx.base === ctx.target) return [this.allPushedItem()];
     const out = await git(root, ['diff', '--name-status', ctx.base, ctx.target]);
     return this.getTreeNodes(buildTree(parseNameStatus(out)), ctx);
+  }
+
+  // Dependency mode: roots are foundations (files importing no other changed
+  // file, review them first); a file's children are the changed files that
+  // import it. Cycles surface their members as extra roots.
+  async getDeps(root) {
+    let ctx;
+    try {
+      ctx = await this.getUnpushedRange(root);
+    } catch (e) {
+      const item = new vscode.TreeItem('No upstream branch', vscode.TreeItemCollapsibleState.None);
+      item.description = 'dependency view needs one — switch to commit view';
+      item.iconPath = new vscode.ThemeIcon('warning');
+      return [item];
+    }
+    if (ctx.base === ctx.target) return [this.allPushedItem()];
+    const files = parseNameStatus(await git(root, ['diff', '--name-status', ctx.base, ctx.target]));
+    const sources = new Map();
+    for (const f of files) {
+      const ref = f.status === 'D' ? ctx.base : ctx.target;
+      sources.set(f.path, await git(root, ['show', `${ref}:${f.path}`]).catch(() => ''));
+    }
+    const edges = buildEdges(sources);
+    const importers = new Map();
+    const outdeg = new Map(files.map((f) => [f.path, 0]));
+    for (const e of edges) {
+      importers.set(e.to, [...(importers.get(e.to) || []), e.from]);
+      outdeg.set(e.from, outdeg.get(e.from) + 1);
+    }
+    const roots = files.map((f) => f.path).filter((p) => outdeg.get(p) === 0);
+    const reachable = new Set();
+    const stack = [...roots];
+    while (stack.length) {
+      const p = stack.pop();
+      if (reachable.has(p)) continue;
+      reachable.add(p);
+      stack.push(...(importers.get(p) || []));
+    }
+    for (const f of files) if (!reachable.has(f.path)) roots.push(f.path);
+    this._deps = { ctx, importers, statuses: new Map(files.map((f) => [f.path, f.status])) };
+    return roots.map((p) => this.depItem(p, [p]));
+  }
+
+  depItem(p, ancestry) {
+    const { ctx, importers, statuses } = this._deps;
+    const f = { name: path.posix.basename(p), status: statuses.get(p) || 'M', path: p };
+    const item = this.fileItem(f, ctx);
+    const children = (importers.get(p) || []).filter((c) => !ancestry.includes(c));
+    const dir = path.posix.dirname(p);
+    const extra = children.length ? `← imported by ${children.length}` : '';
+    item.description = [dir === '.' ? '' : dir, extra, item.description || '']
+      .filter(Boolean)
+      .join(' · ');
+    if (children.length) {
+      item.collapsibleState = vscode.TreeItemCollapsibleState.Expanded;
+      item.contextValue = 'depfile';
+      item.depChildren = children;
+      item.ancestry = ancestry;
+    }
+    return item;
   }
 
   allPushedItem() {
@@ -398,9 +431,41 @@ class CommitTreeProvider {
     return item;
   }
 
-  getTreeNodes(node, ctx) {
+  fileItem(f, ctx) {
     const reviewed = this.reviewed();
     const notes = this.notes();
+    const item = new vscode.TreeItem(f.name, vscode.TreeItemCollapsibleState.None);
+    item.contextValue = 'file';
+    item.filePath = f.path;
+    item.reviewId = this.reviewKey(ctx, f.path);
+    const isReviewed = !!reviewed[item.reviewId];
+    const note = notes[item.reviewId];
+    const risks = riskReasons(f);
+    // Query marks the URI for our FileDecorationProvider (badge + color).
+    item.resourceUri = vscode.Uri.file(path.join(this.repoRoot, f.path)).with({
+      query: `cftStatus=${f.status}&rev=${isReviewed ? 1 : 0}`,
+    });
+    const comments = this.commentsFor(ctx, f.path);
+    const markers = [];
+    if (risks.length && !isReviewed) markers.push(`⚠ ${risks.join(', ')}`);
+    if (note) markers.push('📝');
+    if (comments.length) markers.push(`💬${comments.length}`);
+    item.description = markers.join(' ') || undefined;
+    const lines = [`${STATUS_LABEL[f.status] || f.status}: ${f.path}`];
+    if (risks.length) lines.push(`⚠ Review carefully: ${risks.join(', ')}`);
+    if (note) lines.push(`📝 ${note}`);
+    for (const c of comments) lines.push(`💬 L${c.line}: ${c.text}`);
+    if (isReviewed) lines.push('✓ Reviewed');
+    item.tooltip = lines.join('\n');
+    item.command = {
+      command: 'commitFileTree.openDiff',
+      title: 'Open Diff',
+      arguments: [f.path, f.status, ctx],
+    };
+    return item;
+  }
+
+  getTreeNodes(node, ctx) {
     const dirs = [...node.dirs.entries()]
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([rawName, rawChild]) => {
@@ -414,37 +479,7 @@ class CommitTreeProvider {
       });
     const files = node.files
       .sort((a, b) => a.name.localeCompare(b.name))
-      .map((f) => {
-        const item = new vscode.TreeItem(f.name, vscode.TreeItemCollapsibleState.None);
-        item.contextValue = 'file';
-        item.filePath = f.path;
-        item.reviewId = this.reviewKey(ctx, f.path);
-        const isReviewed = !!reviewed[item.reviewId];
-        const note = notes[item.reviewId];
-        const risks = riskReasons(f);
-        // Query marks the URI for our FileDecorationProvider (badge + color).
-        item.resourceUri = vscode.Uri.file(path.join(this.repoRoot, f.path)).with({
-          query: `cftStatus=${f.status}&rev=${isReviewed ? 1 : 0}`,
-        });
-        const comments = this.commentsFor(ctx, f.path);
-        const markers = [];
-        if (risks.length && !isReviewed) markers.push(`⚠ ${risks.join(', ')}`);
-        if (note) markers.push('📝');
-        if (comments.length) markers.push(`💬${comments.length}`);
-        item.description = markers.join(' ') || undefined;
-        const lines = [`${STATUS_LABEL[f.status] || f.status}: ${f.path}`];
-        if (risks.length) lines.push(`⚠ Review carefully: ${risks.join(', ')}`);
-        if (note) lines.push(`📝 ${note}`);
-        for (const c of comments) lines.push(`💬 L${c.line}: ${c.text}`);
-        if (isReviewed) lines.push('✓ Reviewed');
-        item.tooltip = lines.join('\n');
-        item.command = {
-          command: 'commitFileTree.openDiff',
-          title: 'Open Diff',
-          arguments: [f.path, f.status, ctx],
-        };
-        return item;
-      });
+      .map((f) => this.fileItem(f, ctx));
     return [...dirs, ...files];
   }
 }
@@ -488,7 +523,7 @@ function changeResources(root, files, ctx) {
 
 function activate(context) {
   const provider = new CommitTreeProvider(context.workspaceState);
-  vscode.commands.executeCommand('setContext', 'commitFileTree.combined', false);
+  vscode.commands.executeCommand('setContext', 'commitFileTree.mode', 'commits');
 
   async function reviewAll(item) {
     const root = provider.repoRoot;
@@ -648,60 +683,12 @@ function activate(context) {
     vscode.window.showInformationMessage('Review summary copied to clipboard.');
   }
 
-  // --- Dependency graph & review order ---
-  async function showGraph() {
-    const root = provider.repoRoot;
-    if (!root) return;
-    let ctx;
-    try {
-      ctx = await provider.getUnpushedRange(root);
-    } catch (e) {
-      vscode.window.showWarningMessage('Commit Review Tree: no upstream branch — nothing to analyze.');
-      return;
-    }
-    const files = parseNameStatus(await git(root, ['diff', '--name-status', ctx.base, ctx.target]));
-    const sources = new Map();
-    for (const f of files) {
-      const ref = f.status === 'D' ? ctx.base : ctx.target;
-      const content = await git(root, ['show', `${ref}:${f.path}`]).catch(() => '');
-      sources.set(f.path, content);
-    }
-    const edges = buildEdges(sources);
-    const order = reviewOrder([...sources.keys()], edges);
-    const id = (f) => 'n' + order.indexOf(f);
-    const lines = [
-      `# Suggested review order (${ctx.base.slice(0, 7)}..${ctx.target.slice(0, 7)})`,
-      '',
-      'Dependencies first — files imported by other changed files come before their importers.',
-      '',
-      ...order.map((f, i) => `${i + 1}. \`${f}\``),
-      '',
-      '## Dependency graph (importer → imported)',
-      '',
-      '```mermaid',
-      'flowchart LR',
-      ...order.map((f) => `  ${id(f)}["${f}"]`),
-      ...edges.map((e) => `  ${id(e.from)} --> ${id(e.to)}`),
-      '```',
-      '',
-      ...(edges.length
-        ? edges.map((e) => `- \`${e.from}\` imports \`${e.to}\``)
-        : ['_No import relationships detected among the changed files._']),
-      '',
-      '_Import detection is heuristic (JS/TS/Python static imports only)._',
-    ];
-    const doc = await vscode.workspace.openTextDocument({ content: lines.join('\n'), language: 'markdown' });
-    await vscode.window.showTextDocument(doc);
-    vscode.commands.executeCommand('markdown.showPreview', doc.uri);
-  }
-
   context.subscriptions.push(
     controller,
     vscode.workspace.onDidOpenTextDocument(restoreThreads),
     vscode.commands.registerCommand('commitFileTree.addComment', saveComment),
     vscode.commands.registerCommand('commitFileTree.deleteThread', deleteThread),
     vscode.commands.registerCommand('commitFileTree.exportSummary', exportSummary),
-    vscode.commands.registerCommand('commitFileTree.showGraph', showGraph),
     vscode.window.registerTreeDataProvider('commitFileTree', provider),
     vscode.window.registerFileDecorationProvider({
       provideFileDecoration(uri) {
@@ -726,6 +713,7 @@ function activate(context) {
     vscode.commands.registerCommand('commitFileTree.loadMore', () => provider.loadMore()),
     vscode.commands.registerCommand('commitFileTree.hideHistory', () => provider.hideHistory()),
     vscode.commands.registerCommand('commitFileTree.viewCombined', () => provider.setMode('combined')),
+    vscode.commands.registerCommand('commitFileTree.viewByDeps', () => provider.setMode('deps')),
     vscode.commands.registerCommand('commitFileTree.viewByCommits', () => provider.setMode('commits')),
     vscode.commands.registerCommand('commitFileTree.reviewAll', reviewAll),
     vscode.commands.registerCommand('commitFileTree.revertCommit', revertCommit),
@@ -769,7 +757,6 @@ module.exports = {
   parseImports,
   resolveImport,
   buildEdges,
-  reviewOrder,
   buildSummaryMd,
   CommitTreeProvider,
 };
