@@ -39,6 +39,36 @@ function buildTree(files) {
   return root;
 }
 
+// Parse `git log --format=%H%x09%h%x09%an%x09%ar%x09%s --shortstat` output.
+// Each commit is a tab-separated header line, optionally followed by a
+// "N files changed, X insertions(+), Y deletions(-)" line.
+function parseLog(output) {
+  const commits = [];
+  for (const line of output.split('\n')) {
+    if (/^[0-9a-f]{40}\t/.test(line)) {
+      const [sha, short, author, when, subject] = line.split('\t');
+      commits.push({ sha, short, author, when, subject, files: 0, ins: 0, del: 0 });
+    } else if (commits.length && /\d+ files? changed/.test(line)) {
+      const c = commits[commits.length - 1];
+      c.files = Number((line.match(/(\d+) files? changed/) || [])[1] || 0);
+      c.ins = Number((line.match(/(\d+) insertions?\(\+\)/) || [])[1] || 0);
+      c.del = Number((line.match(/(\d+) deletions?\(-\)/) || [])[1] || 0);
+    }
+  }
+  return commits;
+}
+
+// Compact-folder collapsing: merge chains of single-child directories
+// (a/b/c) into one label, like the Explorer's "compact folders".
+function compactDir(name, node) {
+  while (node.files.length === 0 && node.dirs.size === 1) {
+    const [childName, child] = node.dirs.entries().next().value;
+    name += '/' + childName;
+    node = child;
+  }
+  return { name, node };
+}
+
 const STATUS_LABEL = { A: 'Added', M: 'Modified', D: 'Deleted', R: 'Renamed', C: 'Copied' };
 
 // URI the built-in git extension's content provider understands.
@@ -51,6 +81,12 @@ class CommitTreeProvider {
   constructor() {
     this._onDidChangeTreeData = new vscode.EventEmitter();
     this.onDidChangeTreeData = this._onDidChangeTreeData.event;
+    this.limit = 50;
+  }
+
+  loadMore() {
+    this.limit += 50;
+    this.refresh();
   }
 
   refresh() {
@@ -87,26 +123,37 @@ class CommitTreeProvider {
   }
 
   async getCommits(root) {
-    const out = await git(root, ['log', '-50', '--format=%H%x09%h%x09%an%x09%ar%x09%s']);
-    return out
-      .split('\n')
-      .filter(Boolean)
-      .map((line) => {
-        const [sha, short, author, when, subject] = line.split('\t');
-        const item = new vscode.TreeItem(subject, vscode.TreeItemCollapsibleState.Collapsed);
-        item.contextValue = 'commit';
-        item.sha = sha;
-        item.description = `${short} · ${author} · ${when}`;
-        item.tooltip = `${subject}\n${sha}\n${author}, ${when}`;
-        item.iconPath = new vscode.ThemeIcon('git-commit');
-        return item;
-      });
+    const out = await git(root, [
+      'log',
+      `-${this.limit}`,
+      '--shortstat',
+      '--format=%H%x09%h%x09%an%x09%ar%x09%s',
+    ]);
+    const commits = parseLog(out);
+    const items = commits.map((c) => {
+      const item = new vscode.TreeItem(c.subject, vscode.TreeItemCollapsibleState.Collapsed);
+      item.contextValue = 'commit';
+      item.sha = c.sha;
+      item.subject = c.subject;
+      item.description = `${c.files} files +${c.ins} −${c.del} · ${c.short} · ${c.when}`;
+      item.tooltip = `${c.subject}\n${c.sha}\n${c.author}, ${c.when}\n${c.files} files changed, +${c.ins} −${c.del}`;
+      item.iconPath = new vscode.ThemeIcon('git-commit');
+      return item;
+    });
+    if (commits.length === this.limit) {
+      const more = new vscode.TreeItem('Load more…', vscode.TreeItemCollapsibleState.None);
+      more.iconPath = new vscode.ThemeIcon('ellipsis');
+      more.command = { command: 'commitFileTree.loadMore', title: 'Load More' };
+      items.push(more);
+    }
+    return items;
   }
 
   getTreeNodes(node, sha) {
     const dirs = [...node.dirs.entries()]
       .sort(([a], [b]) => a.localeCompare(b))
-      .map(([name, child]) => {
+      .map(([rawName, rawChild]) => {
+        const { name, node: child } = compactDir(rawName, rawChild);
         const item = new vscode.TreeItem(name, vscode.TreeItemCollapsibleState.Expanded);
         item.contextValue = 'dir';
         item.node = child;
@@ -138,6 +185,13 @@ function activate(context) {
   context.subscriptions.push(
     vscode.window.registerTreeDataProvider('commitFileTree', provider),
     vscode.commands.registerCommand('commitFileTree.refresh', () => provider.refresh()),
+    vscode.commands.registerCommand('commitFileTree.loadMore', () => provider.loadMore()),
+    vscode.commands.registerCommand('commitFileTree.copySha', (item) =>
+      vscode.env.clipboard.writeText(item.sha)
+    ),
+    vscode.commands.registerCommand('commitFileTree.copyMessage', (item) =>
+      vscode.env.clipboard.writeText(item.subject)
+    ),
     vscode.commands.registerCommand('commitFileTree.openDiff', (filePath, status, sha) => {
       const root = provider.repoRoot;
       if (!root) return;
@@ -159,4 +213,4 @@ function activate(context) {
 
 function deactivate() {}
 
-module.exports = { activate, deactivate, parseNameStatus, buildTree };
+module.exports = { activate, deactivate, parseNameStatus, buildTree, parseLog, compactDir };

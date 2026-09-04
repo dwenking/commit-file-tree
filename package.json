@@ -2,7 +2,7 @@
   "name": "commit-file-tree",
   "displayName": "Commit File Tree",
   "description": "Browse each commit's changed files as a clear file tree in the Source Control view.",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "publisher": "dwenking",
   "icon": "icon.png",
   "license": "MIT",
@@ -30,6 +30,18 @@
         "command": "commitFileTree.refresh",
         "title": "Refresh",
         "icon": "$(refresh)"
+      },
+      {
+        "command": "commitFileTree.loadMore",
+        "title": "Load More Commits"
+      },
+      {
+        "command": "commitFileTree.copySha",
+        "title": "Copy Commit Hash"
+      },
+      {
+        "command": "commitFileTree.copyMessage",
+        "title": "Copy Commit Message"
       }
     ],
     "menus": {
@@ -38,6 +50,30 @@
           "command": "commitFileTree.refresh",
           "when": "view == commitFileTree",
           "group": "navigation"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "commitFileTree.copySha",
+          "when": "view == commitFileTree && viewItem == commit"
+        },
+        {
+          "command": "commitFileTree.copyMessage",
+          "when": "view == commitFileTree && viewItem == commit"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "commitFileTree.loadMore",
+          "when": "false"
+        },
+        {
+          "command": "commitFileTree.copySha",
+          "when": "false"
+        },
+        {
+          "command": "commitFileTree.copyMessage",
+          "when": "false"
         }
       ]
     }
