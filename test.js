@@ -17,6 +17,10 @@ module.exports.TreeItem = class {
 };
 module.exports.TreeItemCollapsibleState = {};
 module.exports.ThemeIcon = class {};
+module.exports.ThemeColor = class {};
+module.exports.MarkdownString = class {
+  appendMarkdown() {}
+};
 
 const assert = require('assert');
 const { parseNameStatus, buildTree, parseLog, compactDir } = require('./extension.js');
@@ -77,7 +81,7 @@ const cp = require('child_process');
   const provider = new CommitTreeProvider();
   let items = await provider.getCommits(repo);
   // c3, c2 are unpushed; "Load more…" hides the single history commit c1
-  assert.deepStrictEqual(items.map((i) => i.label), ['c3', 'c2', 'Load more…']);
+  assert.deepStrictEqual(items.map((i) => i.label), ['c3', 'c2', 'Show pushed history…']);
 
   provider.loadMore();
   items = await provider.getCommits(repo);

@@ -6,7 +6,7 @@ A Cursor/VS Code extension that adds a **Commit File Tree** panel to the Source 
 
 - **Your work first** — by default the list shows only your local unpushed commits (`@{upstream}..HEAD`) with subject, short hash, relative time, and diff stats (`3 files +10 −2`); "Load more…" pages in remote history 50 commits at a time (marked with a history icon). Repos without an upstream show plain history.
 - **Folder tree per commit** — expand a commit to see its changed files nested under their real directories, sorted folders-first, with single-child folder chains compacted into one label (`src/utils/git`).
-- **Change status at a glance** — each file is marked Added / Modified / Deleted / Renamed, with the full path and status in the tooltip.
+- **Change status at a glance** — files are colored and badged like the native SCM view (green added, orange modified, red deleted, renamed), with the full path and status in the tooltip. Unpushed commits get a blue dot, pushed ones a dimmed dot.
 - **Commit context menu** — right-click a commit to copy its hash or message.
 - **Click to view changes** — modified and renamed files open a side-by-side diff against the parent commit; added files open the new content, deleted files open the old content. Root commits are handled correctly.
 - **Refresh button** — reload the commit list from the view title bar after new commits land.

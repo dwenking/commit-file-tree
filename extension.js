@@ -140,26 +140,39 @@ class CommitTreeProvider {
       history = parseLog(await git(root, ['log', `-${historyLimit}`, base, '--shortstat', FORMAT]));
     }
     const items = [
-      ...local.map((c) => this.commitItem(c, 'git-commit')),
-      ...history.map((c) => this.commitItem(c, 'history')),
+      ...local.map((c) => this.commitItem(c, true)),
+      ...history.map((c) => this.commitItem(c, false)),
     ];
+    if (hasUpstream && local.length === 0 && this.extra === 0) {
+      const empty = new vscode.TreeItem('No unpushed commits', vscode.TreeItemCollapsibleState.None);
+      empty.iconPath = new vscode.ThemeIcon('check', new vscode.ThemeColor('charts.green'));
+      empty.description = 'everything is pushed';
+      items.unshift(empty);
+    }
     if (historyLimit === 0 || history.length === historyLimit) {
-      const more = new vscode.TreeItem('Load more…', vscode.TreeItemCollapsibleState.None);
-      more.iconPath = new vscode.ThemeIcon('ellipsis');
-      more.command = { command: 'commitFileTree.loadMore', title: 'Load More' };
+      const more = new vscode.TreeItem('Show pushed history…', vscode.TreeItemCollapsibleState.None);
+      more.iconPath = new vscode.ThemeIcon('cloud');
+      more.description = hasUpstream ? 'commits already on the remote' : 'older commits';
+      more.command = { command: 'commitFileTree.loadMore', title: 'Show Pushed History' };
       items.push(more);
     }
     return items;
   }
 
-  commitItem(c, icon) {
+  commitItem(c, unpushed) {
     const item = new vscode.TreeItem(c.subject, vscode.TreeItemCollapsibleState.Collapsed);
     item.contextValue = 'commit';
     item.sha = c.sha;
     item.subject = c.subject;
-    item.description = `${c.files} files +${c.ins} −${c.del} · ${c.short} · ${c.when}`;
-    item.tooltip = `${c.subject}\n${c.sha}\n${c.author}, ${c.when}\n${c.files} files changed, +${c.ins} −${c.del}`;
-    item.iconPath = new vscode.ThemeIcon(icon);
+    item.description = `${c.files} files +${c.ins} −${c.del} · ${c.when}`;
+    item.iconPath = unpushed
+      ? new vscode.ThemeIcon('git-commit', new vscode.ThemeColor('charts.blue'))
+      : new vscode.ThemeIcon('git-commit', new vscode.ThemeColor('descriptionForeground'));
+    const md = new vscode.MarkdownString();
+    md.appendMarkdown(`**${c.subject}**\n\n`);
+    md.appendMarkdown(`\`${c.short}\` ${c.author}, ${c.when}${unpushed ? ' · *unpushed*' : ''}\n\n`);
+    md.appendMarkdown(`${c.files} files changed, **+${c.ins}** **−${c.del}**`);
+    item.tooltip = md;
     return item;
   }
 
@@ -180,8 +193,10 @@ class CommitTreeProvider {
       .map((f) => {
         const item = new vscode.TreeItem(f.name, vscode.TreeItemCollapsibleState.None);
         item.contextValue = 'file';
-        item.resourceUri = vscode.Uri.file(path.join(this.repoRoot, f.path));
-        item.description = f.status;
+        // Query marks the URI for our FileDecorationProvider (badge + color).
+        item.resourceUri = vscode.Uri.file(path.join(this.repoRoot, f.path)).with({
+          query: `cftStatus=${f.status}`,
+        });
         item.tooltip = `${STATUS_LABEL[f.status] || f.status}: ${f.path}`;
         item.command = {
           command: 'commitFileTree.openDiff',
@@ -194,10 +209,31 @@ class CommitTreeProvider {
   }
 }
 
+// Same colors the built-in SCM view uses for changed files.
+const STATUS_COLOR = {
+  A: 'gitDecoration.addedResourceForeground',
+  M: 'gitDecoration.modifiedResourceForeground',
+  D: 'gitDecoration.deletedResourceForeground',
+  R: 'gitDecoration.renamedResourceForeground',
+  C: 'gitDecoration.addedResourceForeground',
+};
+
 function activate(context) {
   const provider = new CommitTreeProvider();
   context.subscriptions.push(
     vscode.window.registerTreeDataProvider('commitFileTree', provider),
+    vscode.window.registerFileDecorationProvider({
+      provideFileDecoration(uri) {
+        const m = /^cftStatus=([A-Z])$/.exec(uri.query);
+        if (!m) return undefined;
+        const status = m[1];
+        return {
+          badge: status,
+          color: new vscode.ThemeColor(STATUS_COLOR[status] || 'foreground'),
+          tooltip: STATUS_LABEL[status] || status,
+        };
+      },
+    }),
     vscode.commands.registerCommand('commitFileTree.refresh', () => provider.refresh()),
     vscode.commands.registerCommand('commitFileTree.loadMore', () => provider.loadMore()),
     vscode.commands.registerCommand('commitFileTree.copySha', (item) =>
