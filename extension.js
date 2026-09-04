@@ -69,6 +69,29 @@ function compactDir(name, node) {
   return { name, node };
 }
 
+// Scope-drift heuristics: paths an AI session usually should not touch.
+const RISKY_PATTERNS = [
+  [/(^|\/)(package-lock\.json|yarn\.lock|pnpm-lock\.yaml|Cargo\.lock|poetry\.lock|go\.sum)$/, 'lockfile'],
+  [/^\.github\//, 'CI config'],
+  [/(^|\/)(\.gitlab-ci\.yml|Jenkinsfile|\.circleci\/)/, 'CI config'],
+  [/(^|\/)\.env(\.|$)/, 'env file'],
+  [/(^|\/)(Dockerfile|docker-compose[^/]*\.ya?ml)$/, 'container config'],
+  [/(^|\/)tsconfig[^/]*\.json$/, 'build config'],
+  [/(^|\/)\.git(ignore|attributes)$/, 'git config'],
+];
+
+function riskReasons(file) {
+  const reasons = [];
+  if (file.status === 'D') reasons.push('deleted');
+  for (const [re, label] of RISKY_PATTERNS) {
+    if (re.test(file.path)) {
+      reasons.push(label);
+      break;
+    }
+  }
+  return reasons;
+}
+
 const STATUS_LABEL = { A: 'Added', M: 'Modified', D: 'Deleted', R: 'Renamed', C: 'Copied' };
 
 // URI the built-in git extension's content provider understands.
@@ -77,12 +100,20 @@ function gitUri(repoRoot, filePath, ref) {
   return vscode.Uri.file(abs).with({ scheme: 'git', query: JSON.stringify({ path: abs, ref }) });
 }
 
+const NOOP_STATE = { get: (k, d) => d, update: async () => {} };
+
 class CommitTreeProvider {
-  constructor() {
+  constructor(state) {
     this._onDidChangeTreeData = new vscode.EventEmitter();
     this.onDidChangeTreeData = this._onDidChangeTreeData.event;
+    this.state = state || NOOP_STATE;
+    this.mode = 'commits'; // 'commits' | 'combined'
     // Number of remote-history commits to show below the local (unpushed) ones.
     this.extra = 0;
+  }
+
+  refresh() {
+    this._onDidChangeTreeData.fire();
   }
 
   loadMore() {
@@ -95,13 +126,49 @@ class CommitTreeProvider {
     this.refresh();
   }
 
-  refresh() {
-    this._onDidChangeTreeData.fire();
+  setMode(mode) {
+    this.mode = mode;
+    vscode.commands.executeCommand('setContext', 'commitFileTree.combined', mode === 'combined');
+    this.refresh();
   }
 
   get repoRoot() {
     const folders = vscode.workspace.workspaceFolders;
     return folders && folders.length ? folders[0].uri.fsPath : undefined;
+  }
+
+  reviewKey(ctx, filePath) {
+    return `${ctx.keyRef}:${filePath}`;
+  }
+
+  reviewed() {
+    return this.state.get('cft.reviewed', {});
+  }
+
+  notes() {
+    return this.state.get('cft.notes', {});
+  }
+
+  async toggleReviewed(item) {
+    const map = { ...this.reviewed() };
+    if (map[item.reviewId]) delete map[item.reviewId];
+    else map[item.reviewId] = true;
+    await this.state.update('cft.reviewed', map);
+    this.refresh();
+  }
+
+  async editNote(item) {
+    const notes = { ...this.notes() };
+    const text = await vscode.window.showInputBox({
+      prompt: `Note for ${item.filePath}`,
+      value: notes[item.reviewId] || '',
+      placeHolder: 'Leave empty to remove the note',
+    });
+    if (text === undefined) return; // cancelled
+    if (text) notes[item.reviewId] = text;
+    else delete notes[item.reviewId];
+    await this.state.update('cft.notes', notes);
+    this.refresh();
   }
 
   getTreeItem(element) {
@@ -112,14 +179,16 @@ class CommitTreeProvider {
     const root = this.repoRoot;
     if (!root) return [];
     try {
-      if (!element) return await this.getCommits(root);
+      if (!element) {
+        return this.mode === 'combined' ? await this.getCombined(root) : await this.getCommits(root);
+      }
       if (element.contextValue === 'commit') {
         const out = await git(root, ['show', '--format=', '--name-status', element.sha]);
-        element.tree = buildTree(parseNameStatus(out));
-        return this.getTreeNodes(element.tree, element.sha);
+        const ctx = { base: `${element.sha}~1`, target: element.sha, keyRef: element.sha };
+        return this.getTreeNodes(buildTree(parseNameStatus(out)), ctx);
       }
       if (element.contextValue === 'dir') {
-        return this.getTreeNodes(element.node, element.sha);
+        return this.getTreeNodes(element.node, element.ctx);
       }
     } catch (e) {
       // Not a git repo, or git failed — show nothing rather than erroring.
@@ -128,9 +197,37 @@ class CommitTreeProvider {
     return [];
   }
 
+  async getUnpushedRange(root) {
+    const base = (await git(root, ['rev-parse', '@{upstream}'])).trim();
+    const target = (await git(root, ['rev-parse', 'HEAD'])).trim();
+    return { base, target, keyRef: base };
+  }
+
+  async getCombined(root) {
+    let ctx;
+    try {
+      ctx = await this.getUnpushedRange(root);
+    } catch (e) {
+      const item = new vscode.TreeItem('No upstream branch', vscode.TreeItemCollapsibleState.None);
+      item.description = 'combined view needs one — switch to commit view';
+      item.iconPath = new vscode.ThemeIcon('warning');
+      return [item];
+    }
+    if (ctx.base === ctx.target) return [this.allPushedItem()];
+    const out = await git(root, ['diff', '--name-status', ctx.base, ctx.target]);
+    return this.getTreeNodes(buildTree(parseNameStatus(out)), ctx);
+  }
+
+  allPushedItem() {
+    const empty = new vscode.TreeItem('No unpushed commits', vscode.TreeItemCollapsibleState.None);
+    empty.iconPath = new vscode.ThemeIcon('check', new vscode.ThemeColor('charts.green'));
+    empty.description = 'everything is pushed';
+    return empty;
+  }
+
   async getCommits(root) {
     const FORMAT = '--format=%H%x09%h%x09%an%x09%ar%x09%s';
-    // Local (unpushed) commits are the focus; remote history is behind "Load more".
+    // Local (unpushed) commits are the focus; remote history is behind "Show pushed history".
     let local = [];
     let hasUpstream = true;
     try {
@@ -149,10 +246,7 @@ class CommitTreeProvider {
       ...history.map((c) => this.commitItem(c, false)),
     ];
     if (hasUpstream && local.length === 0 && this.extra === 0) {
-      const empty = new vscode.TreeItem('No unpushed commits', vscode.TreeItemCollapsibleState.None);
-      empty.iconPath = new vscode.ThemeIcon('check', new vscode.ThemeColor('charts.green'));
-      empty.description = 'everything is pushed';
-      items.unshift(empty);
+      items.unshift(this.allPushedItem());
     }
     if (historyLimit === 0 || history.length === historyLimit) {
       const more = new vscode.TreeItem('Show pushed history…', vscode.TreeItemCollapsibleState.None);
@@ -187,7 +281,9 @@ class CommitTreeProvider {
     return item;
   }
 
-  getTreeNodes(node, sha) {
+  getTreeNodes(node, ctx) {
+    const reviewed = this.reviewed();
+    const notes = this.notes();
     const dirs = [...node.dirs.entries()]
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([rawName, rawChild]) => {
@@ -195,7 +291,7 @@ class CommitTreeProvider {
         const item = new vscode.TreeItem(name, vscode.TreeItemCollapsibleState.Expanded);
         item.contextValue = 'dir';
         item.node = child;
-        item.sha = sha;
+        item.ctx = ctx;
         item.iconPath = vscode.ThemeIcon.Folder;
         return item;
       });
@@ -204,15 +300,28 @@ class CommitTreeProvider {
       .map((f) => {
         const item = new vscode.TreeItem(f.name, vscode.TreeItemCollapsibleState.None);
         item.contextValue = 'file';
+        item.filePath = f.path;
+        item.reviewId = this.reviewKey(ctx, f.path);
+        const isReviewed = !!reviewed[item.reviewId];
+        const note = notes[item.reviewId];
+        const risks = riskReasons(f);
         // Query marks the URI for our FileDecorationProvider (badge + color).
         item.resourceUri = vscode.Uri.file(path.join(this.repoRoot, f.path)).with({
-          query: `cftStatus=${f.status}`,
+          query: `cftStatus=${f.status}&rev=${isReviewed ? 1 : 0}`,
         });
-        item.tooltip = `${STATUS_LABEL[f.status] || f.status}: ${f.path}`;
+        const markers = [];
+        if (risks.length && !isReviewed) markers.push(`⚠ ${risks.join(', ')}`);
+        if (note) markers.push('📝');
+        item.description = markers.join(' ') || undefined;
+        const lines = [`${STATUS_LABEL[f.status] || f.status}: ${f.path}`];
+        if (risks.length) lines.push(`⚠ Review carefully: ${risks.join(', ')}`);
+        if (note) lines.push(`📝 ${note}`);
+        if (isReviewed) lines.push('✓ Reviewed');
+        item.tooltip = lines.join('\n');
         item.command = {
           command: 'commitFileTree.openDiff',
           title: 'Open Diff',
-          arguments: [f.path, f.status, sha],
+          arguments: [f.path, f.status, ctx],
         };
         return item;
       });
@@ -229,15 +338,76 @@ const STATUS_COLOR = {
   C: 'gitDecoration.addedResourceForeground',
 };
 
+function changeResources(root, files, ctx) {
+  return files.map((f) => [
+    vscode.Uri.file(path.join(root, f.path)),
+    f.status === 'A' ? undefined : gitUri(root, f.path, ctx.base),
+    f.status === 'D' ? undefined : gitUri(root, f.path, ctx.target),
+  ]);
+}
+
 function activate(context) {
-  const provider = new CommitTreeProvider();
+  const provider = new CommitTreeProvider(context.workspaceState);
+  vscode.commands.executeCommand('setContext', 'commitFileTree.combined', false);
+
+  async function reviewAll(item) {
+    const root = provider.repoRoot;
+    if (!root) return;
+    let ctx, files, title;
+    try {
+      if (item && item.contextValue === 'commit') {
+        ctx = { base: `${item.sha}~1`, target: item.sha };
+        files = parseNameStatus(await git(root, ['show', '--format=', '--name-status', item.sha]));
+        title = `Review ${item.sha.slice(0, 7)}: ${item.subject}`;
+      } else {
+        ctx = await provider.getUnpushedRange(root);
+        files = parseNameStatus(await git(root, ['diff', '--name-status', ctx.base, ctx.target]));
+        title = 'Review unpushed changes';
+      }
+    } catch (e) {
+      vscode.window.showWarningMessage('Commit Review Tree: nothing to review (no upstream or no changes).');
+      return;
+    }
+    if (!files.length) {
+      vscode.window.showInformationMessage('Commit Review Tree: no changes to review.');
+      return;
+    }
+    return vscode.commands.executeCommand('vscode.changes', title, changeResources(root, files, ctx));
+  }
+
+  async function revertCommit(item) {
+    const root = provider.repoRoot;
+    if (!root || !item || !item.sha) return;
+    const short = item.sha.slice(0, 7);
+    const pick = await vscode.window.showWarningMessage(
+      `Revert commit ${short} "${item.subject}"?\n\nThis creates a new commit that undoes it.`,
+      { modal: true },
+      'Revert'
+    );
+    if (pick !== 'Revert') return;
+    try {
+      await git(root, ['revert', '--no-edit', item.sha]);
+      provider.refresh();
+      vscode.window.showInformationMessage(`Reverted ${short}.`);
+    } catch (e) {
+      vscode.window.showErrorMessage(`Revert failed: ${e.message}`);
+    }
+  }
+
   context.subscriptions.push(
     vscode.window.registerTreeDataProvider('commitFileTree', provider),
     vscode.window.registerFileDecorationProvider({
       provideFileDecoration(uri) {
-        const m = /^cftStatus=([A-Z])$/.exec(uri.query);
+        const m = /^cftStatus=([A-Z])&rev=([01])$/.exec(uri.query);
         if (!m) return undefined;
-        const status = m[1];
+        const [, status, rev] = m;
+        if (rev === '1') {
+          return {
+            badge: '✓',
+            color: new vscode.ThemeColor('gitDecoration.ignoredResourceForeground'),
+            tooltip: 'Reviewed',
+          };
+        }
         return {
           badge: status,
           color: new vscode.ThemeColor(STATUS_COLOR[status] || 'foreground'),
@@ -248,26 +418,32 @@ function activate(context) {
     vscode.commands.registerCommand('commitFileTree.refresh', () => provider.refresh()),
     vscode.commands.registerCommand('commitFileTree.loadMore', () => provider.loadMore()),
     vscode.commands.registerCommand('commitFileTree.hideHistory', () => provider.hideHistory()),
+    vscode.commands.registerCommand('commitFileTree.viewCombined', () => provider.setMode('combined')),
+    vscode.commands.registerCommand('commitFileTree.viewByCommits', () => provider.setMode('commits')),
+    vscode.commands.registerCommand('commitFileTree.reviewAll', reviewAll),
+    vscode.commands.registerCommand('commitFileTree.revertCommit', revertCommit),
+    vscode.commands.registerCommand('commitFileTree.toggleReviewed', (item) => provider.toggleReviewed(item)),
+    vscode.commands.registerCommand('commitFileTree.editNote', (item) => provider.editNote(item)),
     vscode.commands.registerCommand('commitFileTree.copySha', (item) =>
       vscode.env.clipboard.writeText(item.sha)
     ),
     vscode.commands.registerCommand('commitFileTree.copyMessage', (item) =>
       vscode.env.clipboard.writeText(item.subject)
     ),
-    vscode.commands.registerCommand('commitFileTree.openDiff', (filePath, status, sha) => {
+    vscode.commands.registerCommand('commitFileTree.openDiff', (filePath, status, ctx) => {
       const root = provider.repoRoot;
       if (!root) return;
-      const title = `${path.basename(filePath)} (${sha.slice(0, 7)})`;
-      // Added: no parent-side version (may even be a root commit) — open the new content.
+      const title = `${path.basename(filePath)} (${ctx.target.slice(0, 7)})`;
+      // Added: no base-side version (may even be a root commit) — open the new content.
       if (status === 'A') {
-        return vscode.commands.executeCommand('vscode.open', gitUri(root, filePath, sha));
+        return vscode.commands.executeCommand('vscode.open', gitUri(root, filePath, ctx.target));
       }
-      // Deleted: no version at sha — open the old content.
+      // Deleted: no version at target — open the old content.
       if (status === 'D') {
-        return vscode.commands.executeCommand('vscode.open', gitUri(root, filePath, `${sha}~1`));
+        return vscode.commands.executeCommand('vscode.open', gitUri(root, filePath, ctx.base));
       }
-      const left = gitUri(root, filePath, `${sha}~1`);
-      const right = gitUri(root, filePath, sha);
+      const left = gitUri(root, filePath, ctx.base);
+      const right = gitUri(root, filePath, ctx.target);
       return vscode.commands.executeCommand('vscode.diff', left, right, title);
     })
   );
@@ -282,5 +458,6 @@ module.exports = {
   buildTree,
   parseLog,
   compactDir,
+  riskReasons,
   CommitTreeProvider,
 };

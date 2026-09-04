@@ -17,6 +17,9 @@ module.exports.TreeItem = class {
 };
 module.exports.TreeItemCollapsibleState = {};
 module.exports.ThemeIcon = class {};
+module.exports.ThemeIcon.Folder = {};
+module.exports.workspace = { workspaceFolders: undefined };
+module.exports.commands = { executeCommand: () => {} };
 module.exports.ThemeColor = class {};
 module.exports.MarkdownString = class {
   appendMarkdown() {}
@@ -92,6 +95,20 @@ const cp = require('child_process');
   items = await provider.getCommits(repo);
   assert.deepStrictEqual(items.map((i) => i.label), ['c3', 'c2', 'Show pushed history…']);
 
+  // Combined mode: one tree for everything unpushed (f2, f3 from c2/c3)
+  Object.defineProperty(provider, 'repoRoot', { value: repo });
+  provider.setMode('combined');
+  items = await provider.getCombined(repo);
+  assert.deepStrictEqual(items.map((i) => i.label).sort(), ['f2', 'f3']);
+  assert.strictEqual(items[0].command.command, 'commitFileTree.openDiff');
+
   fs.rmSync(repo, { recursive: true, force: true });
   console.log('ok');
 })();
+
+// Risk flags: deletions and sensitive paths, nothing for ordinary files
+const { riskReasons } = require('./extension.js');
+assert.deepStrictEqual(riskReasons({ status: 'D', path: 'src/a.js' }), ['deleted']);
+assert.deepStrictEqual(riskReasons({ status: 'M', path: 'package-lock.json' }), ['lockfile']);
+assert.deepStrictEqual(riskReasons({ status: 'M', path: '.github/workflows/ci.yml' }), ['CI config']);
+assert.deepStrictEqual(riskReasons({ status: 'M', path: 'src/app.js' }), []);
