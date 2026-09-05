@@ -348,13 +348,14 @@ class CommitTreeProvider {
       stack.push(...(importers.get(p) || []));
     }
     for (const f of files) if (!reachable.has(f.path)) roots.push(f.path);
-    this._deps = { ctx, importers, statuses: new Map(files.map((f) => [f.path, f.status])) };
+    this._deps = { ctx, importers, meta: new Map(files.map((f) => [f.path, f])) };
     return roots.map((p) => this.depItem(p, [p]));
   }
 
   depItem(p, ancestry) {
-    const { ctx, importers, statuses } = this._deps;
-    const f = { name: path.posix.basename(p), status: statuses.get(p) || 'M', path: p };
+    const { ctx, importers, meta } = this._deps;
+    const m = meta.get(p) || {};
+    const f = { name: path.posix.basename(p), status: m.status || 'M', path: p, oldPath: m.oldPath };
     const item = this.fileItem(f, ctx);
     const children = (importers.get(p) || []).filter((c) => !ancestry.includes(c));
     const dir = path.posix.dirname(p);
