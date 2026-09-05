@@ -83,19 +83,25 @@ const cp = require('child_process');
   sh('git add . && git commit -qm c3');
   sh('git branch up HEAD~2 && git branch --set-upstream-to=up');
 
+  // Labels may be TreeItemLabel objects with a highlighted trailing tag.
+  const lbl = (i) => (typeof i.label === 'string' ? i.label : i.label.label).split('  ')[0];
+
   const provider = new CommitTreeProvider();
   let items = await provider.getCommits(repo);
   // c3, c2 are unpushed; "Load more…" hides the single history commit c1
-  assert.deepStrictEqual(items.map((i) => i.label), ['c3', 'c2', 'Show pushed history…']);
+  assert.deepStrictEqual(items.map(lbl), ['c3', 'c2', 'Show pushed history…']);
+  // diff stats rendered as a highlighted tag in the label
+  assert.ok(items[0].label.label.endsWith('+1 −0'), 'commit label missing stats tag');
+  assert.ok(items[0].label.highlights.length === 1);
 
   provider.loadMore();
   items = await provider.getCommits(repo);
   // history exhausted (1 < 50): no "show more", but a way back
-  assert.deepStrictEqual(items.map((i) => i.label), ['c3', 'c2', 'c1', 'Hide pushed history']);
+  assert.deepStrictEqual(items.map(lbl), ['c3', 'c2', 'c1', 'Hide pushed history']);
 
   provider.hideHistory();
   items = await provider.getCommits(repo);
-  assert.deepStrictEqual(items.map((i) => i.label), ['c3', 'c2', 'Show pushed history…']);
+  assert.deepStrictEqual(items.map(lbl), ['c3', 'c2', 'Show pushed history…']);
 
   // Combined mode: one tree for everything unpushed (f2.js, f3.js from c2/c3)
   Object.defineProperty(provider, 'repoRoot', { value: repo });
@@ -107,19 +113,20 @@ const cp = require('child_process');
   // Dependency mode: f3.js imports f2.js, so f2.js is the root and f3.js its child
   provider.setMode('deps');
   items = await provider.getDeps(repo);
-  assert.deepStrictEqual(items.map((i) => i.label), ['f2.js']);
+  assert.deepStrictEqual(items.map(lbl), ['f2.js']);
+  assert.ok(items[0].label.label.endsWith('↑1'), 'dep root missing importer tag');
   assert.strictEqual(items[0].contextValue, 'depfile');
   const children = await provider.getChildren(items[0]);
-  assert.deepStrictEqual(children.map((i) => i.label), ['f3.js']);
+  assert.deepStrictEqual(children.map(lbl), ['f3.js']);
   assert.strictEqual(children[0].contextValue, 'file'); // leaf: no further importers
 
   // Renamed file has no import edges → grouped under "Standalone files",
   // and must diff against its old path at base
   sh('git mv f1 f1r && git commit -qm c4');
   items = await provider.getDeps(repo);
-  assert.deepStrictEqual(items.map((i) => i.label), ['f2.js', 'Standalone files (1)']);
+  assert.deepStrictEqual(items.map(lbl), ['f2.js', 'Standalone files (1)']);
   const standalone = await provider.getChildren(items[1]);
-  const renamed = standalone.find((i) => i.label === 'f1r');
+  const renamed = standalone.find((i) => lbl(i) === 'f1r');
   assert.strictEqual(renamed.command.arguments[1], 'R');
   assert.strictEqual(renamed.command.arguments[3], 'f1');
 

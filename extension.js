@@ -381,15 +381,17 @@ class CommitTreeProvider {
     const item = this.fileItem(f, ctx);
     const children = (importers.get(p) || []).filter((c) => !ancestry.includes(c));
     const dir = path.posix.dirname(p);
-    const extra = children.length ? `← imported by ${children.length}` : '';
-    item.description = [dir === '.' ? '' : dir, extra, item.description || '']
-      .filter(Boolean)
-      .join(' · ');
+    item.description = [dir === '.' ? '' : dir, item.description || ''].filter(Boolean).join(' · ');
     if (children.length) {
+      // "imported by N" as a highlighted tag after the filename.
+      const tag = `↑${children.length}`;
+      const text = `${f.name}  ${tag}`;
+      item.label = { label: text, highlights: [[text.length - tag.length, text.length]] };
       item.collapsibleState = vscode.TreeItemCollapsibleState.Expanded;
       item.contextValue = 'depfile';
       item.depChildren = children;
       item.ancestry = ancestry;
+      item.tooltip = `${item.tooltip}\n↑ imported by ${children.length} changed file(s)`;
     }
     return item;
   }
@@ -442,10 +444,14 @@ class CommitTreeProvider {
 
   commitItem(c, unpushed) {
     const item = new vscode.TreeItem(c.subject, vscode.TreeItemCollapsibleState.Collapsed);
+    // Render diff stats as a highlighted tag after the subject.
+    const tag = `+${c.ins} −${c.del}`;
+    const text = `${c.subject}  ${tag}`;
+    item.label = { label: text, highlights: [[text.length - tag.length, text.length]] };
     item.contextValue = 'commit';
     item.sha = c.sha;
     item.subject = c.subject;
-    item.description = `${c.files} files +${c.ins} −${c.del} · ${c.when}`;
+    item.description = `${c.files} files · ${c.when}`;
     item.iconPath = unpushed
       ? new vscode.ThemeIcon('git-commit', new vscode.ThemeColor('charts.blue'))
       : new vscode.ThemeIcon('git-commit', new vscode.ThemeColor('descriptionForeground'));

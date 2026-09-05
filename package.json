@@ -1,8 +1,8 @@
 {
   "name": "commit-file-tree",
   "displayName": "Commit Review Tree",
-  "description": "Review AI-generated commits fast: unpushed work as a file tree, combined or per-commit, with multi-diff review, reviewed checkmarks, notes, risk flags, and revert.",
-  "version": "0.2.5",
+  "description": "Review AI-generated commits like a PR: unpushed work as file trees (by commit, combined, or by dependencies), line comments, reviewed checkmarks, risk flags, and one-click export of feedback for your agent.",
+  "version": "0.2.6",
   "publisher": "dwenking",
   "icon": "icon.png",
   "license": "MIT",
