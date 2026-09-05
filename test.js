@@ -90,9 +90,8 @@ const cp = require('child_process');
   let items = await provider.getCommits(repo);
   // c3, c2 are unpushed; "Load more…" hides the single history commit c1
   assert.deepStrictEqual(items.map(lbl), ['c3', 'c2', 'Show pushed history…']);
-  // diff stats rendered as a highlighted tag in the label
-  assert.ok(items[0].label.label.endsWith('+1 −0'), 'commit label missing stats tag');
-  assert.ok(items[0].label.highlights.length === 1);
+  // diff stats live in the dimmed description
+  assert.ok(items[0].description.startsWith('+1 −0'), 'commit description missing stats');
 
   provider.loadMore();
   items = await provider.getCommits(repo);
@@ -114,7 +113,7 @@ const cp = require('child_process');
   provider.setMode('deps');
   items = await provider.getDeps(repo);
   assert.deepStrictEqual(items.map(lbl), ['f2.js']);
-  assert.ok(items[0].label.label.endsWith('↑1'), 'dep root missing importer tag');
+  assert.ok(items[0].description.startsWith('↑1'), 'dep root missing importer count');
   assert.strictEqual(items[0].contextValue, 'depfile');
   const children = await provider.getChildren(items[0]);
   assert.deepStrictEqual(children.map(lbl), ['f3.js']);

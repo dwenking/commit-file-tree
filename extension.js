@@ -271,6 +271,7 @@ class CommitTreeProvider {
     if (!root) return [];
     try {
       if (!element) {
+        this.updateBadge(root); // fire-and-forget
         if (this.mode === 'combined') return await this.getCombined(root);
         if (this.mode === 'deps') return await this.getDeps(root);
         return await this.getCommits(root);
@@ -294,6 +295,22 @@ class CommitTreeProvider {
       return [];
     }
     return [];
+  }
+
+  // Rounded view-header badge: number of changed files not yet marked reviewed.
+  async updateBadge(root) {
+    if (!this.view) return;
+    try {
+      const ctx = await this.getUnpushedRange(root);
+      const files = parseNameStatus(await git(root, ['diff', '--name-status', ctx.base, ctx.target]));
+      const reviewed = this.reviewed();
+      // ponytail: a file counts as reviewed if marked under any ref (commit or combined scope)
+      const done = new Set(Object.keys(reviewed).map((k) => k.slice(k.indexOf(':') + 1)));
+      const left = files.filter((f) => !done.has(f.path)).length;
+      this.view.badge = left > 0 ? { value: left, tooltip: `${left} file(s) awaiting review` } : undefined;
+    } catch (e) {
+      this.view.badge = undefined;
+    }
   }
 
   async getUnpushedRange(root) {
@@ -381,18 +398,16 @@ class CommitTreeProvider {
     const item = this.fileItem(f, ctx);
     const children = (importers.get(p) || []).filter((c) => !ancestry.includes(c));
     const dir = path.posix.dirname(p);
-    item.description = [dir === '.' ? '' : dir, item.description || ''].filter(Boolean).join(' · ');
+    const parts = [dir === '.' ? '' : dir, item.description || ''];
     if (children.length) {
-      // "imported by N" as a highlighted tag after the filename.
-      const tag = `↑${children.length}`;
-      const text = `${f.name}  ${tag}`;
-      item.label = { label: text, highlights: [[text.length - tag.length, text.length]] };
+      parts.unshift(`↑${children.length}`);
       item.collapsibleState = vscode.TreeItemCollapsibleState.Expanded;
       item.contextValue = 'depfile';
       item.depChildren = children;
       item.ancestry = ancestry;
       item.tooltip = `${item.tooltip}\n↑ imported by ${children.length} changed file(s)`;
     }
+    item.description = parts.filter(Boolean).join(' · ');
     return item;
   }
 
@@ -444,14 +459,10 @@ class CommitTreeProvider {
 
   commitItem(c, unpushed) {
     const item = new vscode.TreeItem(c.subject, vscode.TreeItemCollapsibleState.Collapsed);
-    // Render diff stats as a highlighted tag after the subject.
-    const tag = `+${c.ins} −${c.del}`;
-    const text = `${c.subject}  ${tag}`;
-    item.label = { label: text, highlights: [[text.length - tag.length, text.length]] };
     item.contextValue = 'commit';
     item.sha = c.sha;
     item.subject = c.subject;
-    item.description = `${c.files} files · ${c.when}`;
+    item.description = `+${c.ins} −${c.del} · ${c.files} files · ${c.when}`;
     item.iconPath = unpushed
       ? new vscode.ThemeIcon('git-commit', new vscode.ThemeColor('charts.blue'))
       : new vscode.ThemeIcon('git-commit', new vscode.ThemeColor('descriptionForeground'));
