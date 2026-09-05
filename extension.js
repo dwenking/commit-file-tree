@@ -208,6 +208,9 @@ class CommitTreeProvider {
   setMode(mode) {
     this.mode = mode;
     vscode.commands.executeCommand('setContext', 'commitFileTree.mode', mode);
+    if (this.view) {
+      this.view.description = { commits: 'by commits', combined: 'combined', deps: 'by dependencies' }[mode];
+    }
     this.refresh();
   }
 
@@ -274,6 +277,9 @@ class CommitTreeProvider {
       }
       if (element.contextValue === 'depfile') {
         return element.depChildren.map((p) => this.depItem(p, [...element.ancestry, p]));
+      }
+      if (element.contextValue === 'depgroup') {
+        return element.filesList.map((p) => this.depItem(p, [p]));
       }
       if (element.contextValue === 'commit') {
         const out = await git(root, ['show', '--format=', '--name-status', element.sha]);
@@ -349,7 +355,23 @@ class CommitTreeProvider {
     }
     for (const f of files) if (!reachable.has(f.path)) roots.push(f.path);
     this._deps = { ctx, importers, meta: new Map(files.map((f) => [f.path, f])) };
-    return roots.map((p) => this.depItem(p, [p]));
+    // Separate import chains from standalone files (no edges either way).
+    const isolated = roots.filter((p) => !(importers.get(p) || []).length);
+    const connected = roots.filter((p) => (importers.get(p) || []).length);
+    if (!connected.length) return roots.map((p) => this.depItem(p, [p]));
+    const items = connected.map((p) => this.depItem(p, [p]));
+    if (isolated.length) {
+      const group = new vscode.TreeItem(
+        `Standalone files (${isolated.length})`,
+        vscode.TreeItemCollapsibleState.Collapsed
+      );
+      group.contextValue = 'depgroup';
+      group.iconPath = new vscode.ThemeIcon('files');
+      group.description = 'no import relationships with other changed files';
+      group.filesList = isolated;
+      items.push(group);
+    }
+    return items;
   }
 
   depItem(p, ancestry) {
@@ -687,13 +709,17 @@ function activate(context) {
     vscode.window.showInformationMessage('Review summary copied to clipboard.');
   }
 
+  const view = vscode.window.createTreeView('commitFileTree', { treeDataProvider: provider });
+  provider.view = view;
+  view.description = 'by commits';
+
   context.subscriptions.push(
+    view,
     controller,
     vscode.workspace.onDidOpenTextDocument(restoreThreads),
     vscode.commands.registerCommand('commitFileTree.addComment', saveComment),
     vscode.commands.registerCommand('commitFileTree.deleteThread', deleteThread),
     vscode.commands.registerCommand('commitFileTree.exportSummary', exportSummary),
-    vscode.window.registerTreeDataProvider('commitFileTree', provider),
     vscode.window.registerFileDecorationProvider({
       provideFileDecoration(uri) {
         const m = /^cftStatus=([A-Z])&rev=([01])$/.exec(uri.query);

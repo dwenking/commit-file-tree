@@ -113,10 +113,13 @@ const cp = require('child_process');
   assert.deepStrictEqual(children.map((i) => i.label), ['f3.js']);
   assert.strictEqual(children[0].contextValue, 'file'); // leaf: no further importers
 
-  // Renamed file in deps mode must diff against its old path at base
+  // Renamed file has no import edges → grouped under "Standalone files",
+  // and must diff against its old path at base
   sh('git mv f1 f1r && git commit -qm c4');
   items = await provider.getDeps(repo);
-  const renamed = items.find((i) => i.label === 'f1r');
+  assert.deepStrictEqual(items.map((i) => i.label), ['f2.js', 'Standalone files (1)']);
+  const standalone = await provider.getChildren(items[1]);
+  const renamed = standalone.find((i) => i.label === 'f1r');
   assert.strictEqual(renamed.command.arguments[1], 'R');
   assert.strictEqual(renamed.command.arguments[3], 'f1');
 
