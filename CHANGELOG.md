@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.2.9
+- Marketplace search keywords.
+
 ## 0.2.8
 - Inline revert button on commit rows (previously right-click only).
 - Store page explains where the panel lives after install.
