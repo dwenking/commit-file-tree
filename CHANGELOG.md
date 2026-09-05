@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.8
+- Inline revert button on commit rows (previously right-click only).
+- Store page explains where the panel lives after install.
+
 ## 0.2.7
 - Rounded view badge showing the number of files awaiting review.
 - Changelog moved to its own marketplace tab.

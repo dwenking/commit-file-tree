@@ -4,6 +4,10 @@
 
 When a coding agent works in your repo, it leaves behind a pile of local commits: intermediate fixes, broad file churn, and the occasional change you never asked for. This extension turns that pile into a reviewable unit — your unpushed work, presented as clear file trees with review tooling attached — so you can inspect, annotate, and feed the results straight back to the agent.
 
+## Where to find it
+
+After installing, open the **Source Control** sidebar (`Cmd/Ctrl+Shift+G`). The **COMMIT REVIEW TREE** section appears there, below the built-in Changes/Graph sections — it may start collapsed at the bottom, so click its header to expand, or drag the header upward to pin it where you like. Commit rows: click to expand the file tree, hover for the review-all and revert buttons, right-click for copy/revert actions.
+
 ## Features
 
 ### See what the agent actually did
