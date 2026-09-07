@@ -319,3 +319,23 @@ assert.deepStrictEqual(commentRangeFor(docUri, [otherEditor], '/repo'), []);
 // file outside the repo → no ranges
 const outside = { scheme: 'file', fsPath: '/elsewhere/x.js', toString: () => 'file:///elsewhere/x.js' };
 assert.deepStrictEqual(commentRangeFor(outside, [{ document: { uri: outside }, selection: { active: { line: 1 } } }], '/repo'), []);
+
+// Comments outside the unpushed change set are exported, not dropped
+const mdOutside = buildSummaryMd({
+  rangeLabel: 'aaa..bbb',
+  files: [],
+  outside: [
+    { path: 'src/config.ts', ref: 'working', line: 12, text: 'this file should change too', code: 'const RETRIES = 1;' },
+    { path: 'src/old.ts', ref: 'c0ffee1234deadbeef', line: 3, endLine: 5, text: 'legacy concern', code: 'x' },
+  ],
+});
+for (const expected of [
+  '## Comments outside this change',
+  '### src/config.ts:12 (working copy)',
+  'this file should change too',
+  '### src/old.ts:3-5 (c0ffee1)',
+]) {
+  assert.ok(mdOutside.includes(expected), `outside section missing: ${expected}`);
+}
+// and the section is absent when there is nothing outside
+assert.ok(!md.includes('Comments outside this change'));

@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.3.16
+- Export no longer drops comments made outside the unpushed change set — they appear under "Comments outside this change" with file, line, and source revision.
+
 ## 0.3.15
 - Multi-line comments: select a range, click "+", and the thread anchors to the whole span (shown as L3-L7 in the tree and export; the export quotes up to 8 lines).
 

@@ -36,7 +36,7 @@ After installing, open the **Source Control** sidebar (`Cmd/Ctrl+Shift+G`). The 
 - Renames, added, deleted files, and root commits all open correct diffs.
 
 ### Close the loop with the agent
-- **Export review summary** — one click collects every line comment (with the quoted code), note, and flag into an action-item markdown report and copies it to the clipboard. Paste it into the agent chat as the fix list; it reads as instructions, not prose.
+- **Export review summary** — one click collects every line comment (with the quoted code), note, and flag into an action-item markdown report and copies it to the clipboard. Paste it into the agent chat as the fix list; it reads as instructions, not prose. Comments on files outside the change set ("this file should change too") are included in their own section — nothing you write is dropped.
 ![One-click export of all review feedback as an action-item report](images/export-summary.png)
 
 - **Revert a commit** — right-click → revert (safe: creates an undo commit, after confirmation) when a change should simply not exist.

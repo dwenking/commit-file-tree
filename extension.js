@@ -273,6 +273,16 @@ function buildEdges(sources) {
 
 // --- Review summary export ---------------------------------------------------
 
+// Quote source lines for a comment: up to 8 lines, ellipsis beyond.
+function quoteLines(content, line, endLine) {
+  if (!content) return '';
+  const all = content.split('\n');
+  const end = Math.min(endLine || line, line + 7);
+  let code = all.slice(line - 1, end).join('\n').trim();
+  if ((endLine || line) > end) code += '\n…';
+  return code;
+}
+
 // data: {rangeLabel, files: [{path, status, risks, reviewed, note, comments: [{line, text, code}]}]}
 function buildSummaryMd(data) {
   const lines = [`# Code review feedback (${data.rangeLabel})`, ''];
@@ -289,6 +299,17 @@ function buildSummaryMd(data) {
     }
   } else {
     lines.push('_No notes or comments._', '');
+  }
+  // Comments made on files/revisions outside the unpushed range still matter
+  // (e.g. "this untouched file should change too") — never drop user input.
+  if (data.outside && data.outside.length) {
+    lines.push('## Comments outside this change', '');
+    for (const c of data.outside) {
+      const at = c.ref === 'working' ? 'working copy' : c.ref.slice(0, 7);
+      lines.push(`### ${c.path}:${c.line}${c.endLine ? '-' + c.endLine : ''} (${at})`, '');
+      if (c.code) lines.push('```', c.code, '```');
+      lines.push(c.text, '');
+    }
   }
   return lines.join('\n') + '\n';
 }
@@ -935,14 +956,12 @@ function activate(context) {
               if (content === undefined && f.status !== 'D') {
                 content = await git(root, ['show', `${ctx.target}:${f.path}`]).catch(() => '');
               }
-              let code = '';
-              if (content) {
-                const all = content.split('\n');
-                const end = Math.min(c.endLine || c.line, c.line + 7); // cap the quote at 8 lines
-                code = all.slice(c.line - 1, end).join('\n').trim();
-                if ((c.endLine || c.line) > end) code += '\n…';
-              }
-              comments.push({ line: c.line, endLine: c.endLine, text: c.text, code });
+              comments.push({
+                line: c.line,
+                endLine: c.endLine,
+                text: c.text,
+                code: quoteLines(content, c.line, c.endLine),
+              });
             }
           }
           comments.sort((a, b) => a.line - b.line);
@@ -958,6 +977,35 @@ function activate(context) {
         })
       ),
     };
+    // Comments on files or revisions outside the unpushed range go in their own section.
+    const filePaths = new Set(files.map((f) => f.path));
+    data.outside = [];
+    for (const [key, list] of Object.entries(store)) {
+      const idx = key.indexOf(':');
+      const ref = key.slice(0, idx);
+      const rel = key.slice(idx + 1);
+      if (filePaths.has(rel) && refs.has(ref)) continue; // already in action items
+      let content;
+      if (ref === 'working') {
+        try {
+          content = fs.readFileSync(path.join(root, rel), 'utf8');
+        } catch (e) {
+          content = '';
+        }
+      } else {
+        content = await git(root, ['show', `${ref}:${rel}`]).catch(() => '');
+      }
+      for (const c of list) {
+        data.outside.push({
+          path: rel,
+          ref,
+          line: c.line,
+          endLine: c.endLine,
+          text: c.text,
+          code: quoteLines(content, c.line, c.endLine),
+        });
+      }
+    }
     const md = buildSummaryMd(data);
     await vscode.env.clipboard.writeText(md);
     const doc = await vscode.workspace.openTextDocument({ content: md, language: 'markdown' });
