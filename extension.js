@@ -880,6 +880,12 @@ function activate(context) {
   }
   vscode.workspace.textDocuments.forEach(restoreThreads);
   let lastCommentLine;
+  // Focus returning from the comment widget re-queries ranges so the "+" recovers.
+  const focusListener = vscode.window.onDidChangeActiveTextEditor((ed) => {
+    if (ed && locOf(ed.document.uri, provider.repoRoot)) {
+      controller.commentingRangeProvider = rangeProvider;
+    }
+  });
   const selectionListener = vscode.window.onDidChangeTextEditorSelection((e) => {
     if (!locOf(e.textEditor.document.uri, provider.repoRoot)) return;
     const line = e.textEditor.selection.active.line;
@@ -985,6 +991,7 @@ function activate(context) {
     view,
     controller,
     selectionListener,
+    focusListener,
     vscode.workspace.onDidOpenTextDocument(restoreThreads),
     vscode.commands.registerCommand('commitFileTree.addComment', saveComment),
     vscode.commands.registerCommand('commitFileTree.deleteThread', deleteThread),

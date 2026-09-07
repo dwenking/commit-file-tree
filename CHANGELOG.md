@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.3.13
+## 0.3.13 – 0.3.14
 - Comment "+" no longer disappears after discarding an empty comment draft.
 
 ## 0.3.12
