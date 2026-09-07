@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.3.10
+- Combined and dependency views work in repos without an upstream: base falls back to the merge-base with a local main/master, or the empty tree for single-branch local repos.
+
 ## 0.3.9
 - Comment "+" is a single steady marker on the cursor's line: no flicker while typing, no duplicates on wrapped or multi-line selections.
 

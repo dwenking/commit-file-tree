@@ -143,6 +143,13 @@ const cp = require('child_process');
   assert.strictEqual(mid.collapsibleState, 2); // Expanded (has child f4.js)
   assert.deepStrictEqual(provider.depChainFor('f4.js').chain, ['f2.js', 'f3.js', 'f4.js']);
 
+  // Local-only repo (no upstream): combined view falls back to the empty tree
+  // and shows the whole history's net result instead of "No upstream branch"
+  sh('git branch --unset-upstream');
+  items = await provider.getCombined(repo);
+  const names = items.map(lbl).sort();
+  assert.ok(names.includes('f2.js') && names.includes('f4.js'), `unexpected: ${names}`);
+
   fs.rmSync(repo, { recursive: true, force: true });
   console.log('ok');
 })();

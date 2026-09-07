@@ -447,9 +447,32 @@ class CommitTreeProvider {
     }
   }
 
+  // git's well-known empty tree: lets local-only repos diff their entire history
+  static EMPTY_TREE = '4b825dc642cb6eb9a060e54bf8d69288fbee4904';
+
+  // Base for "what am I reviewing": upstream if set, else merge-base with a
+  // local main branch, else the empty tree (whole repo counts as new work).
   async getUnpushedRange(root) {
-    const base = (await git(root, ['rev-parse', '@{upstream}'])).trim();
     const target = (await git(root, ['rev-parse', 'HEAD'])).trim();
+    let base;
+    try {
+      base = (await git(root, ['rev-parse', '@{upstream}'])).trim();
+    } catch (e) {
+      const branch = (await git(root, ['rev-parse', '--abbrev-ref', 'HEAD'])).trim();
+      for (const main of ['main', 'master']) {
+        if (main === branch) continue;
+        try {
+          const mb = (await git(root, ['merge-base', main, 'HEAD'])).trim();
+          if (mb !== target) {
+            base = mb;
+            break;
+          }
+        } catch (e2) {
+          // no such branch
+        }
+      }
+      base = base || CommitTreeProvider.EMPTY_TREE;
+    }
     return { base, target, keyRef: base };
   }
 
