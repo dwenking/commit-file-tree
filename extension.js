@@ -1,5 +1,6 @@
 const vscode = require('vscode');
 const cp = require('child_process');
+const fs = require('fs');
 const path = require('path');
 
 function git(cwd, args) {
@@ -33,8 +34,11 @@ function buildTree(files) {
   for (const f of files) {
     const segments = f.path.split('/');
     let node = root;
-    for (const seg of segments.slice(0, -1)) {
-      if (!node.dirs.has(seg)) node.dirs.set(seg, { dirs: new Map(), files: [] });
+    for (let i = 0; i < segments.length - 1; i++) {
+      const seg = segments[i];
+      if (!node.dirs.has(seg)) {
+        node.dirs.set(seg, { dirs: new Map(), files: [], path: segments.slice(0, i + 1).join('/') });
+      }
       node = node.dirs.get(seg);
     }
     node.files.push({ name: segments[segments.length - 1], status: f.status, path: f.path, oldPath: f.oldPath });
@@ -675,12 +679,17 @@ class CommitTreeProvider {
         item.node = child;
         item.ctx = ctx;
         item.iconPath = vscode.ThemeIcon.Folder;
-        const agg = aggStatus(child);
+        let agg = aggStatus(child);
+        // Unchanged files never appear in the diff, so "all D" only means the
+        // folder is gone if it no longer exists on disk.
+        if (agg === 'D' && child.path && fs.existsSync(path.join(this.repoRoot, child.path))) {
+          agg = undefined;
+        }
         if (agg) {
-          item.resourceUri = vscode.Uri.file(path.join(this.repoRoot, name)).with({
+          item.resourceUri = vscode.Uri.file(path.join(this.repoRoot, child.path || name)).with({
             query: `cftStatus=${agg}&rev=0`,
           });
-          item.tooltip = agg === 'D' ? 'Folder deleted (all files inside removed)' : 'New folder (all files inside added)';
+          item.tooltip = agg === 'D' ? 'Folder deleted (all files inside removed)' : 'All changed files inside are new';
         }
         return item;
       });
