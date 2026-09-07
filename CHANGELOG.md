@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.2
+- Export shows a confirmation with archive counts, plus an "Export Only" choice that skips archiving.
+- Restore Last Archived Round has a title-bar button (visible when an archive exists).
+- Removed the title-bar Review All Changes button; the per-commit hover button remains.
+
 ## 0.4.1
 - Archive-on-export is now undoable: the toast offers "Undo Archive", and "Restore Last Archived Round" in the command palette brings back the most recent round anytime. Archives are stored per round.
 

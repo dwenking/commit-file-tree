@@ -971,10 +971,29 @@ function activate(context) {
     controller.commentingRangeProvider = rangeProvider;
   });
 
+  function updateArchiveContext() {
+    const rounds = provider.state.get('cft.archive.rounds', []);
+    vscode.commands.executeCommand('setContext', 'commitFileTree.hasArchive', rounds.length > 0);
+  }
+  updateArchiveContext();
+
   // --- Export review summary ---
   async function exportSummary() {
     const root = provider.repoRoot;
     if (!root) return;
+    const activeComments = Object.values(provider.comments()).reduce((n, l) => n + l.length, 0);
+    const activeNotes = Object.keys(provider.notes()).length;
+    let archiveAfter = false;
+    if (activeComments || activeNotes) {
+      const pick = await vscode.window.showWarningMessage(
+        `Export review summary?\n\n"Export & Archive" also archives ${activeComments} comment(s) and ${activeNotes} note(s) to start the next round (undoable).`,
+        { modal: true },
+        'Export & Archive',
+        'Export Only'
+      );
+      if (!pick) return;
+      archiveAfter = pick === 'Export & Archive';
+    }
     let ctx;
     try {
       ctx = await provider.getUnpushedRange(root);
@@ -1063,23 +1082,25 @@ function activate(context) {
     await vscode.env.clipboard.writeText(md);
     const doc = await vscode.workspace.openTextDocument({ content: md, language: 'markdown' });
     await vscode.window.showTextDocument(doc);
+    if (!archiveAfter) {
+      vscode.window.showInformationMessage('Review summary copied to clipboard.');
+      return;
+    }
     // Export ends the round: archive delivered feedback so the next round starts clean.
     const counts = await provider.archiveReviewData();
     liveThreads.forEach((t) => t.dispose());
     liveThreads.clear();
-    if (counts.comments || counts.notes) {
-      const pick = await vscode.window.showInformationMessage(
-        `Review summary copied — archived ${counts.comments} comment(s) and ${counts.notes} note(s) for the next round.`,
-        'Undo Archive'
-      );
-      if (pick === 'Undo Archive') await restoreLastRound();
-    } else {
-      vscode.window.showInformationMessage('Review summary copied to clipboard.');
-    }
+    updateArchiveContext();
+    const pick = await vscode.window.showInformationMessage(
+      `Review summary copied — archived ${counts.comments} comment(s) and ${counts.notes} note(s) for the next round.`,
+      'Undo Archive'
+    );
+    if (pick === 'Undo Archive') await restoreLastRound();
   }
 
   async function restoreLastRound() {
     const restored = await provider.restoreLastRound();
+    updateArchiveContext();
     if (!restored) {
       vscode.window.showInformationMessage('Commit Review Tree: no archived round to restore.');
       return;
@@ -1099,6 +1120,7 @@ function activate(context) {
     await provider.clearReviewData();
     liveThreads.forEach((t) => t.dispose());
     liveThreads.clear();
+    updateArchiveContext();
   }
 
   const view = vscode.window.createTreeView('commitFileTree', { treeDataProvider: provider });
