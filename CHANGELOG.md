@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.3.2
+- Dependency view nodes start collapsed for a cleaner overview.
+
 ## 0.3.1
 - Dependency view covers Vue/Svelte, Go, Rust, C/C++, C#, Ruby, PHP, Scala/Groovy in addition to JS/TS, Python, Java/Kotlin.
 

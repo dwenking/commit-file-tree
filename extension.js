@@ -502,7 +502,7 @@ class CommitTreeProvider {
     const parts = [dir === '.' ? '' : dir, item.description || ''];
     if (children.length) {
       parts.unshift(`↑${children.length}`);
-      item.collapsibleState = vscode.TreeItemCollapsibleState.Expanded;
+      item.collapsibleState = vscode.TreeItemCollapsibleState.Collapsed;
       item.contextValue = 'depfile';
       item.depChildren = children;
       item.ancestry = ancestry;
