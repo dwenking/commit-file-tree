@@ -787,12 +787,16 @@ function activate(context) {
 
   // --- Line comments (native Comments API) ---
   const controller = vscode.comments.createCommentController('commitFileTree', 'Commit Review Tree');
-  controller.commentingRangeProvider = {
+  // Only offer the "+" gutter on the cursor's line, not on every hovered line.
+  const rangeProvider = {
     provideCommentingRanges(document) {
       if (!locOf(document.uri, provider.repoRoot)) return [];
-      return [new vscode.Range(0, 0, Math.max(document.lineCount - 1, 0), 0)];
+      const ed = vscode.window.activeTextEditor;
+      if (!ed || ed.document.uri.toString() !== document.uri.toString()) return [];
+      return ed.selections.map((s) => new vscode.Range(s.start.line, 0, s.end.line, 0));
     },
   };
+  controller.commentingRangeProvider = rangeProvider;
   const liveThreads = new Map(); // "<ref>:<rel>:<line>" -> CommentThread
 
   function commentBody(text) {
@@ -809,6 +813,7 @@ function activate(context) {
     await provider.state.update('cft.comments', store);
     reply.thread.comments = [...reply.thread.comments, commentBody(reply.text)];
     reply.thread.canReply = true;
+    reply.thread.contextValue = 'saved'; // gates the Delete button to real threads
     liveThreads.set(`${key}:${line}`, reply.thread);
     provider.refresh();
   }
@@ -839,11 +844,17 @@ function activate(context) {
       const range = new vscode.Range(c.line - 1, 0, c.line - 1, 0);
       const thread = controller.createCommentThread(document.uri, range, [commentBody(c.text)]);
       thread.canReply = true;
+      thread.contextValue = 'saved';
       thread.collapsibleState = vscode.CommentThreadCollapsibleState.Collapsed;
       liveThreads.set(threadKey, thread);
     }
   }
   vscode.workspace.textDocuments.forEach(restoreThreads);
+  const selectionListener = vscode.window.onDidChangeTextEditorSelection((e) => {
+    if (!locOf(e.textEditor.document.uri, provider.repoRoot)) return;
+    // ponytail: reassigning the provider pokes VS Code into re-querying ranges
+    controller.commentingRangeProvider = rangeProvider;
+  });
 
   // --- Export review summary ---
   async function exportSummary() {
@@ -940,6 +951,7 @@ function activate(context) {
   context.subscriptions.push(
     view,
     controller,
+    selectionListener,
     vscode.workspace.onDidOpenTextDocument(restoreThreads),
     vscode.commands.registerCommand('commitFileTree.addComment', saveComment),
     vscode.commands.registerCommand('commitFileTree.deleteThread', deleteThread),

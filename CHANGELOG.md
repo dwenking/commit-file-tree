@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.8
+- Comment "+" gutter only appears on the cursor's line instead of every hovered line.
+- Delete button only shows on threads with saved comments; new empty threads just have collapse.
+
 ## 0.3.6
 - Folders whose files are all deleted (or all added) are colored and badged like their files, in combined and commit trees. Deletion is verified against the working tree so folders that still contain unchanged files are not misflagged.
 
