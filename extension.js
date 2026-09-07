@@ -752,6 +752,18 @@ function locOf(uri, root) {
   return undefined;
 }
 
+// Commenting range for a document: one zero-width range on the cursor's line
+// of whichever *visible* editor shows it. Deliberately not focus-dependent —
+// focus sits in the comment widget while ranges are re-queried after a
+// draft is discarded (the 0.3.13 regression).
+function commentRangeFor(documentUri, editors, root) {
+  if (!locOf(documentUri, root)) return [];
+  const ed = editors.find((e) => e.document.uri.toString() === documentUri.toString());
+  if (!ed) return [];
+  const line = ed.selection.active.line;
+  return [new vscode.Range(line, 0, line, 0)];
+}
+
 function changeResources(root, files, ctx) {
   return files.map((f) => [
     vscode.Uri.file(path.join(root, f.path)),
@@ -813,16 +825,7 @@ function activate(context) {
   // Only offer the "+" gutter on the cursor's line, not on every hovered line.
   const rangeProvider = {
     provideCommentingRanges(document) {
-      if (!locOf(document.uri, provider.repoRoot)) return [];
-      // visibleTextEditors, not activeTextEditor: focus may sit in the comment
-      // widget when ranges are re-queried (e.g. after discarding a draft)
-      const ed = vscode.window.visibleTextEditors.find(
-        (e) => e.document.uri.toString() === document.uri.toString()
-      );
-      if (!ed) return [];
-      // single zero-width range on the cursor's line: one steady "+"
-      const line = ed.selection.active.line;
-      return [new vscode.Range(line, 0, line, 0)];
+      return commentRangeFor(document.uri, vscode.window.visibleTextEditors, provider.repoRoot);
     },
   };
   controller.commentingRangeProvider = rangeProvider;
@@ -1072,5 +1075,6 @@ module.exports = {
   buildEdges,
   buildSummaryMd,
   aggStatus,
+  commentRangeFor,
   CommitTreeProvider,
 };

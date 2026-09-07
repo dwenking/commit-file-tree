@@ -24,6 +24,12 @@ module.exports.ThemeColor = class {};
 module.exports.MarkdownString = class {
   appendMarkdown() {}
 };
+module.exports.Range = class {
+  constructor(sl, sc, el, ec) {
+    this.start = { line: sl, character: sc };
+    this.end = { line: el, character: ec };
+  }
+};
 
 const assert = require('assert');
 const { parseNameStatus, buildTree, parseLog, compactDir } = require('./extension.js');
@@ -284,3 +290,23 @@ for (const expected of [
 ]) {
   assert.ok(md.includes(expected), `summary missing: ${expected}`);
 }
+
+// Comment "+" placement: focus-independent, tied to the visible editor's cursor.
+// Regression for 0.3.13: ranges must not depend on which editor is *active*,
+// only on which visible editor shows the document.
+const { commentRangeFor } = require('./extension.js');
+const docUri = { scheme: 'file', fsPath: '/repo/src/a.js', toString: () => 'file:///repo/src/a.js' };
+const editorShowingDoc = { document: { uri: docUri }, selection: { active: { line: 41 } } };
+const otherEditor = {
+  document: { uri: { scheme: 'file', fsPath: '/repo/b.js', toString: () => 'file:///repo/b.js' } },
+  selection: { active: { line: 0 } },
+};
+// doc visible (even though another editor might hold focus) → one zero-width range on line 41
+let ranges = commentRangeFor(docUri, [otherEditor, editorShowingDoc], '/repo');
+assert.strictEqual(ranges.length, 1);
+assert.deepStrictEqual([ranges[0].start.line, ranges[0].end.line], [41, 41]);
+// document not visible in any editor → no ranges
+assert.deepStrictEqual(commentRangeFor(docUri, [otherEditor], '/repo'), []);
+// file outside the repo → no ranges
+const outside = { scheme: 'file', fsPath: '/elsewhere/x.js', toString: () => 'file:///elsewhere/x.js' };
+assert.deepStrictEqual(commentRangeFor(outside, [{ document: { uri: outside }, selection: { active: { line: 1 } } }], '/repo'), []);
