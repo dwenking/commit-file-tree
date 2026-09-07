@@ -15,7 +15,7 @@ module.exports.TreeItem = class {
     this.label = label;
   }
 };
-module.exports.TreeItemCollapsibleState = {};
+module.exports.TreeItemCollapsibleState = { None: 0, Collapsed: 1, Expanded: 2 };
 module.exports.ThemeIcon = class {};
 module.exports.ThemeIcon.Folder = {};
 module.exports.workspace = { workspaceFolders: undefined };
@@ -132,6 +132,16 @@ const cp = require('child_process');
   // Reveal chain: connected file resolves root→target; standalone flags its group
   assert.deepStrictEqual(provider.depChainFor('f3.js'), { chain: ['f2.js', 'f3.js'], inGroup: false });
   assert.deepStrictEqual(provider.depChainFor('f1r'), { chain: ['f1r'], inGroup: true });
+
+  // Expansion policy: roots start collapsed, but opened chains expand fully
+  fs.writeFileSync(path.join(repo, 'f4.js'), "require('./f3');");
+  sh('git add . && git commit -qm c5');
+  items = await provider.getDeps(repo);
+  const rootItem = items.find((i) => lbl(i) === 'f2.js');
+  assert.strictEqual(rootItem.collapsibleState, 1); // Collapsed
+  const mid = (await provider.getChildren(rootItem)).find((i) => lbl(i) === 'f3.js');
+  assert.strictEqual(mid.collapsibleState, 2); // Expanded (has child f4.js)
+  assert.deepStrictEqual(provider.depChainFor('f4.js').chain, ['f2.js', 'f3.js', 'f4.js']);
 
   fs.rmSync(repo, { recursive: true, force: true });
   console.log('ok');

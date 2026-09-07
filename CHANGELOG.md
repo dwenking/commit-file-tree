@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.4
+- Reveal in Dependency View expands the target's subtree and adds a back button to return to the previous view.
+- Expanding a dependency node now expands its whole subtree; roots stay collapsed.
+- Store page documents Reveal in Dependency View.
+
 ## 0.3.3
 - Right-click a file in commit/combined view → "Reveal in Dependency View" jumps to its import chain, expanded and selected.
 

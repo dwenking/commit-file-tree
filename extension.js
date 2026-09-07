@@ -383,8 +383,9 @@ class CommitTreeProvider {
         return await this.getCommits(root);
       }
       if (element.contextValue === 'depfile') {
+        // once a chain is opened, show the whole subtree expanded
         return element.depChildren.map((p) => {
-          const child = this.depItem(p, [...element.ancestry, p]);
+          const child = this.depItem(p, [...element.ancestry, p], true);
           child.parentItem = element;
           return child;
         });
@@ -528,7 +529,7 @@ class CommitTreeProvider {
     return { chain, inGroup: grouped && isolated.includes(target) };
   }
 
-  depItem(p, ancestry) {
+  depItem(p, ancestry, expandIfParent) {
     const { ctx, importers, meta } = this._deps;
     const m = meta.get(p) || {};
     const f = { name: path.posix.basename(p), status: m.status || 'M', path: p, oldPath: m.oldPath };
@@ -539,7 +540,9 @@ class CommitTreeProvider {
     const parts = [dir === '.' ? '' : dir, item.description || ''];
     if (children.length) {
       parts.unshift(`↑${children.length}`);
-      item.collapsibleState = vscode.TreeItemCollapsibleState.Collapsed;
+      item.collapsibleState = expandIfParent
+        ? vscode.TreeItemCollapsibleState.Expanded
+        : vscode.TreeItemCollapsibleState.Collapsed;
       item.contextValue = 'depfile';
       item.depChildren = children;
       item.ancestry = ancestry;
@@ -868,10 +871,17 @@ function activate(context) {
   provider.view = view;
   view.description = 'by commits';
 
+  let backMode;
+  function setBack(mode) {
+    backMode = mode;
+    vscode.commands.executeCommand('setContext', 'commitFileTree.canGoBack', !!mode);
+  }
+
   // Switch to dependency mode and reveal the file's shortest import chain.
   async function revealInDeps(item) {
     const root = provider.repoRoot;
     if (!root || !item || !item.filePath) return;
+    setBack(provider.mode !== 'deps' ? provider.mode : undefined);
     provider.setMode('deps');
     await provider.getDeps(root); // ensure the dependency model exists
     const target = item.filePath;
@@ -888,7 +898,8 @@ function activate(context) {
       parent = el;
     }
     try {
-      await view.reveal(el, { select: true, expand: true, focus: true });
+      // expand: 3 is the API's maximum subtree depth
+      await view.reveal(el, { select: true, expand: 3, focus: true });
     } catch (e) {
       // reveal is best-effort; the mode switch alone already helps
     }
@@ -924,9 +935,14 @@ function activate(context) {
     vscode.commands.registerCommand('commitFileTree.refresh', () => provider.refresh()),
     vscode.commands.registerCommand('commitFileTree.loadMore', () => provider.loadMore()),
     vscode.commands.registerCommand('commitFileTree.hideHistory', () => provider.hideHistory()),
-    vscode.commands.registerCommand('commitFileTree.viewCombined', () => provider.setMode('combined')),
-    vscode.commands.registerCommand('commitFileTree.viewByDeps', () => provider.setMode('deps')),
-    vscode.commands.registerCommand('commitFileTree.viewByCommits', () => provider.setMode('commits')),
+    vscode.commands.registerCommand('commitFileTree.viewCombined', () => { setBack(undefined); provider.setMode('combined'); }),
+    vscode.commands.registerCommand('commitFileTree.viewByDeps', () => { setBack(undefined); provider.setMode('deps'); }),
+    vscode.commands.registerCommand('commitFileTree.viewByCommits', () => { setBack(undefined); provider.setMode('commits'); }),
+    vscode.commands.registerCommand('commitFileTree.goBack', () => {
+      const mode = backMode || 'commits';
+      setBack(undefined);
+      provider.setMode(mode);
+    }),
     vscode.commands.registerCommand('commitFileTree.reviewAll', reviewAll),
     vscode.commands.registerCommand('commitFileTree.revertCommit', revertCommit),
     vscode.commands.registerCommand('commitFileTree.toggleReviewed', (item) => provider.toggleReviewed(item)),

@@ -2,7 +2,7 @@
   "name": "commit-file-tree",
   "displayName": "Commit Review Tree",
   "description": "Review AI-generated commits like a PR: unpushed work as file trees (by commit, combined, or by dependencies), line comments, reviewed checkmarks, risk flags, and one-click export of feedback for your agent.",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "publisher": "dwenking",
   "icon": "icon.png",
   "license": "MIT",
@@ -104,10 +104,20 @@
       {
         "command": "commitFileTree.revealInDeps",
         "title": "Reveal in Dependency View"
+      },
+      {
+        "command": "commitFileTree.goBack",
+        "title": "Back to Previous View",
+        "icon": "$(arrow-left)"
       }
     ],
     "menus": {
       "view/title": [
+        {
+          "command": "commitFileTree.goBack",
+          "when": "view == commitFileTree && commitFileTree.canGoBack",
+          "group": "navigation@0"
+        },
         {
           "command": "commitFileTree.viewByCommits",
           "when": "view == commitFileTree",
@@ -234,6 +244,10 @@
         },
         {
           "command": "commitFileTree.revealInDeps",
+          "when": "false"
+        },
+        {
+          "command": "commitFileTree.goBack",
           "when": "false"
         }
       ]
