@@ -367,6 +367,11 @@ class CommitTreeProvider {
     return element;
   }
 
+  // Required by TreeView.reveal(); only dependency-mode items track parents.
+  getParent(element) {
+    return element.parentItem;
+  }
+
   async getChildren(element) {
     const root = this.repoRoot;
     if (!root) return [];
@@ -378,10 +383,18 @@ class CommitTreeProvider {
         return await this.getCommits(root);
       }
       if (element.contextValue === 'depfile') {
-        return element.depChildren.map((p) => this.depItem(p, [...element.ancestry, p]));
+        return element.depChildren.map((p) => {
+          const child = this.depItem(p, [...element.ancestry, p]);
+          child.parentItem = element;
+          return child;
+        });
       }
       if (element.contextValue === 'depgroup') {
-        return element.filesList.map((p) => this.depItem(p, [p]));
+        return element.filesList.map((p) => {
+          const child = this.depItem(p, [p]);
+          child.parentItem = element;
+          return child;
+        });
       }
       if (element.contextValue === 'commit') {
         const out = await git(root, ['show', '--format=', '--name-status', element.sha]);
@@ -457,9 +470,11 @@ class CommitTreeProvider {
     }
     const edges = buildEdges(sources);
     const importers = new Map();
+    const outEdges = new Map();
     const outdeg = new Map(files.map((f) => [f.path, 0]));
     for (const e of edges) {
       importers.set(e.to, [...(importers.get(e.to) || []), e.from]);
+      outEdges.set(e.from, [...(outEdges.get(e.from) || []), e.to]);
       outdeg.set(e.from, outdeg.get(e.from) + 1);
     }
     const roots = files.map((f) => f.path).filter((p) => outdeg.get(p) === 0);
@@ -472,24 +487,45 @@ class CommitTreeProvider {
       stack.push(...(importers.get(p) || []));
     }
     for (const f of files) if (!reachable.has(f.path)) roots.push(f.path);
-    this._deps = { ctx, importers, meta: new Map(files.map((f) => [f.path, f])) };
     // Separate import chains from standalone files (no edges either way).
     const isolated = roots.filter((p) => !(importers.get(p) || []).length);
     const connected = roots.filter((p) => (importers.get(p) || []).length);
+    const grouped = connected.length > 0 && isolated.length > 0;
+    this._deps = { ctx, importers, outEdges, grouped, isolated, meta: new Map(files.map((f) => [f.path, f])) };
     if (!connected.length) return roots.map((p) => this.depItem(p, [p]));
     const items = connected.map((p) => this.depItem(p, [p]));
-    if (isolated.length) {
-      const group = new vscode.TreeItem(
-        `Standalone files (${isolated.length})`,
-        vscode.TreeItemCollapsibleState.Collapsed
-      );
-      group.contextValue = 'depgroup';
-      group.iconPath = new vscode.ThemeIcon('files');
-      group.description = 'no import relationships with other changed files';
-      group.filesList = isolated;
-      items.push(group);
-    }
+    if (grouped) items.push(this.depGroupItem());
     return items;
+  }
+
+  depGroupItem() {
+    const group = new vscode.TreeItem(
+      `Standalone files (${this._deps.isolated.length})`,
+      vscode.TreeItemCollapsibleState.Collapsed
+    );
+    group.id = 'cft:depgroup';
+    group.contextValue = 'depgroup';
+    group.iconPath = new vscode.ThemeIcon('files');
+    group.description = 'no import relationships with other changed files';
+    group.filesList = this._deps.isolated;
+    return group;
+  }
+
+  // Shortest chain from a root down to `target` in the dependency tree,
+  // following the target's own imports upward (greedy, cycle-safe).
+  depChainFor(target) {
+    const { outEdges, grouped, isolated } = this._deps;
+    const chain = [target];
+    const seen = new Set(chain);
+    let cur = target;
+    let next;
+    while ((next = (outEdges.get(cur) || []).find((n) => !seen.has(n)))) {
+      chain.push(next);
+      seen.add(next);
+      cur = next;
+    }
+    chain.reverse();
+    return { chain, inGroup: grouped && isolated.includes(target) };
   }
 
   depItem(p, ancestry) {
@@ -497,6 +533,7 @@ class CommitTreeProvider {
     const m = meta.get(p) || {};
     const f = { name: path.posix.basename(p), status: m.status || 'M', path: p, oldPath: m.oldPath };
     const item = this.fileItem(f, ctx);
+    item.id = 'cft:dep:' + ancestry.join('|');
     const children = (importers.get(p) || []).filter((c) => !ancestry.includes(c));
     const dir = path.posix.dirname(p);
     const parts = [dir === '.' ? '' : dir, item.description || ''];
@@ -831,6 +868,32 @@ function activate(context) {
   provider.view = view;
   view.description = 'by commits';
 
+  // Switch to dependency mode and reveal the file's shortest import chain.
+  async function revealInDeps(item) {
+    const root = provider.repoRoot;
+    if (!root || !item || !item.filePath) return;
+    provider.setMode('deps');
+    await provider.getDeps(root); // ensure the dependency model exists
+    const target = item.filePath;
+    if (!provider._deps || !provider._deps.meta.has(target)) {
+      vscode.window.showInformationMessage('Commit Review Tree: file is not part of the unpushed change set.');
+      return;
+    }
+    const { chain, inGroup } = provider.depChainFor(target);
+    let parent = inGroup ? provider.depGroupItem() : undefined;
+    let el = parent;
+    for (let i = 0; i < chain.length; i++) {
+      el = provider.depItem(chain[i], chain.slice(0, i + 1));
+      el.parentItem = parent;
+      parent = el;
+    }
+    try {
+      await view.reveal(el, { select: true, expand: true, focus: true });
+    } catch (e) {
+      // reveal is best-effort; the mode switch alone already helps
+    }
+  }
+
   context.subscriptions.push(
     view,
     controller,
@@ -838,6 +901,7 @@ function activate(context) {
     vscode.commands.registerCommand('commitFileTree.addComment', saveComment),
     vscode.commands.registerCommand('commitFileTree.deleteThread', deleteThread),
     vscode.commands.registerCommand('commitFileTree.exportSummary', exportSummary),
+    vscode.commands.registerCommand('commitFileTree.revealInDeps', revealInDeps),
     vscode.window.registerFileDecorationProvider({
       provideFileDecoration(uri) {
         const m = /^cftStatus=([A-Z])&rev=([01])$/.exec(uri.query);

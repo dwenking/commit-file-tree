@@ -129,6 +129,10 @@ const cp = require('child_process');
   assert.strictEqual(renamed.command.arguments[1], 'R');
   assert.strictEqual(renamed.command.arguments[3], 'f1');
 
+  // Reveal chain: connected file resolves root→target; standalone flags its group
+  assert.deepStrictEqual(provider.depChainFor('f3.js'), { chain: ['f2.js', 'f3.js'], inGroup: false });
+  assert.deepStrictEqual(provider.depChainFor('f1r'), { chain: ['f1r'], inGroup: true });
+
   fs.rmSync(repo, { recursive: true, force: true });
   console.log('ok');
 })();

@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.3.3
+- Right-click a file in commit/combined view → "Reveal in Dependency View" jumps to its import chain, expanded and selected.
+
 ## 0.3.2
 - Dependency view nodes start collapsed for a cleaner overview.
 
