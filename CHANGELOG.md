@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.3.12
+- New hero screenshot: combined view with the full change tree.
+
 ## 0.3.11
 - Store page screenshots for the main review workflows.
 

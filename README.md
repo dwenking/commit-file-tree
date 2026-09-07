@@ -4,7 +4,7 @@
 
 When a coding agent works in your repo, it leaves behind a pile of local commits: intermediate fixes, broad file churn, and the occasional change you never asked for. This extension turns that pile into a reviewable unit — your unpushed work, presented as clear file trees with review tooling attached — so you can inspect, annotate, and feed the results straight back to the agent.
 
-![Review unpushed commits as file trees, with one-click multi-diff](images/review-by-commits.png)
+![All unpushed changes as one tree, reviewed in a single multi-diff tab](images/combined-all-changes.png)
 
 ## Where to find it
 
@@ -26,6 +26,8 @@ After installing, open the **Source Control** sidebar (`Cmd/Ctrl+Shift+G`). The 
 
 ### Review it like a PR
 - **Review all changes in one click** — the multi-diff button opens every changed file's diff stacked in a single tab, for the whole unpushed range or a single commit.
+![Commit-by-commit review with one-click multi-diff](images/review-by-commits.png)
+
 - **GitHub-style line comments** — click "+" in the diff gutter to comment on a line. Threads are keyed to the immutable commit, so they never drift, persist across reloads, and show as 💬 counts in the tree.
 ![GitHub-style line comments on a commit diff](images/line-comments.png)
 
