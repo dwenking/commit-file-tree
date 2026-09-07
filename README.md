@@ -18,25 +18,19 @@ After installing, open the **Source Control** sidebar (`Cmd/Ctrl+Shift+G`). The 
   - **By commits** — expand each commit into a real folder tree of its changes.
   - **Combined** — the *net* result of all unpushed commits as one tree. Ideal when the agent made ten intermediate commits and you only care about the final state.
   - **By dependencies** — changed files organized by who imports whom (`↑N` = imported by N changed files), so you review foundations before their callers. Files with no relationships are grouped under "Standalone files". Heuristic import analysis for JS/TS/Vue/Svelte, Python, Java/Kotlin/Scala, Go, Rust, C/C++, C#, Ruby, PHP.
-![Changed files organized by who imports whom](images/dependency-view.png)
-
 - **Jump between modes per file** — spotted an interesting file in the commit or combined view? Right-click → **Reveal in Dependency View** switches modes, expands its import chain from the root, and selects it — instant answer to "what does this file sit on, and what sits on it?" without hunting through the tree.
 - **Scope-drift risk flags** — the classic agent failure is touching things you didn't ask about. Deletions, lockfiles, CI config, env files, and build config are flagged with ⚠ and a reason.
 - Native styling throughout: SCM status colors and badges, compact folders, blue dots for unpushed commits.
 
 ### Review it like a PR
-- **Review all changes in one click** — the multi-diff button opens every changed file's diff stacked in a single tab, for the whole unpushed range or a single commit.
-![Commit-by-commit review with one-click multi-diff](images/review-by-commits.png)
+- **Review a whole commit in one click** — hover a commit row and hit the multi-diff button: every file's diff opens stacked in a single tab.
 
-- **GitHub-style line comments** — click "+" in the diff gutter to comment on a line. Threads are keyed to the immutable commit, so they never drift, persist across reloads, and show as 💬 counts in the tree.
-![GitHub-style line comments on a commit diff](images/line-comments.png)
-
+- **GitHub-style line comments** — click "+" in the diff gutter to comment on the cursor line, or select multiple lines to comment on the whole span. Threads are keyed to the immutable commit, so they never drift, persist across reloads, and show as 💬 counts in the tree.
 - **Reviewed checkmarks** — mark files done as you go; they dim with a ✓ so interrupted reviews resume exactly where you stopped.
 - **File notes** — attach a whole-file remark (📝) when a line comment is too narrow.
 - Renames, added, deleted files, and root commits all open correct diffs.
 
 ### Close the loop with the agent
-- **Export review summary** — one click collects every line comment (with the quoted code), note, and flag into an action-item markdown report and copies it to the clipboard. Paste it into the agent chat as the fix list; it reads as instructions, not prose. Comments on files outside the change set ("this file should change too") are included in their own section — nothing you write is dropped. Exporting also ends the review round: delivered comments and notes are archived automatically, so when the agent pushes new commits you review on a clean slate.
-![One-click export of all review feedback as an action-item report](images/export-summary.png)
-
+- **Export review summary** — one click collects every line comment (with the quoted code), note, and flag into an action-item markdown report and copies it to the clipboard. Paste it into the agent chat as the fix list; it reads as instructions, not prose. Comments and notes on files outside the change set ("this file should change too") are included in their own section — nothing you write is dropped.
+- **Review rounds** — exporting can also archive the delivered comments and notes (with confirmation, or choose "Export Only"), so when the agent pushes new commits you review on a clean slate. Archived rounds are restorable anytime via the title-bar history button or "Restore Last Archived Round"; "Clear All Review Data" resets everything.
 - **Revert a commit** — right-click → revert (safe: creates an undo commit, after confirmation) when a change should simply not exist.

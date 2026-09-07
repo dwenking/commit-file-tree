@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.4.3
+- Store page refresh: single hero screenshot, feature copy updated for review rounds and multi-line comments.
+
 ## 0.4.2
 - Export shows a confirmation with archive counts, plus an "Export Only" choice that skips archiving.
 - Restore Last Archived Round has a title-bar button (visible when an archive exists).
