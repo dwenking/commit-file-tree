@@ -2,3 +2,4 @@ test.js
 .claude/**
 *.vsix
 .gitignore
+.env
