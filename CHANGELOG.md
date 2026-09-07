@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.3.11
+- Store page screenshots for the main review workflows.
+
 ## 0.3.10
 - Combined and dependency views work in repos without an upstream: base falls back to the merge-base with a local main/master, or the empty tree for single-branch local repos.
 

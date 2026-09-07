@@ -149,6 +149,9 @@ const cp = require('child_process');
   items = await provider.getCombined(repo);
   const names = items.map(lbl).sort();
   assert.ok(names.includes('f2.js') && names.includes('f4.js'), `unexpected: ${names}`);
+  // Dependency view under the same fallback still splits chains from standalone files
+  items = await provider.getDeps(repo);
+  assert.deepStrictEqual(items.map(lbl), ['f2.js', 'Standalone files (1)']);
 
   fs.rmSync(repo, { recursive: true, force: true });
   console.log('ok');
