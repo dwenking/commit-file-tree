@@ -793,7 +793,9 @@ function activate(context) {
       if (!locOf(document.uri, provider.repoRoot)) return [];
       const ed = vscode.window.activeTextEditor;
       if (!ed || ed.document.uri.toString() !== document.uri.toString()) return [];
-      return ed.selections.map((s) => new vscode.Range(s.start.line, 0, s.end.line, 0));
+      // single zero-width range on the cursor's line: one steady "+"
+      const line = ed.selection.active.line;
+      return [new vscode.Range(line, 0, line, 0)];
     },
   };
   controller.commentingRangeProvider = rangeProvider;
@@ -850,8 +852,12 @@ function activate(context) {
     }
   }
   vscode.workspace.textDocuments.forEach(restoreThreads);
+  let lastCommentLine;
   const selectionListener = vscode.window.onDidChangeTextEditorSelection((e) => {
     if (!locOf(e.textEditor.document.uri, provider.repoRoot)) return;
+    const line = e.textEditor.selection.active.line;
+    if (line === lastCommentLine) return; // typing within a line: no redraw, no flicker
+    lastCommentLine = line;
     // ponytail: reassigning the provider pokes VS Code into re-querying ranges
     controller.commentingRangeProvider = rangeProvider;
   });

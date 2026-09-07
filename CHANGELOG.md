@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.3.9
+- Comment "+" is a single steady marker on the cursor's line: no flicker while typing, no duplicates on wrapped or multi-line selections.
+
 ## 0.3.8
 - Comment "+" gutter only appears on the cursor's line instead of every hovered line.
 - Delete button only shows on threads with saved comments; new empty threads just have collapse.
