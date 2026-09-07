@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.3.15
+- Multi-line comments: select a range, click "+", and the thread anchors to the whole span (shown as L3-L7 in the tree and export; the export quotes up to 8 lines).
+
 ## 0.3.13 – 0.3.14
 - Comment "+" no longer disappears after discarding an empty comment draft.
 

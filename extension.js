@@ -282,7 +282,7 @@ function buildSummaryMd(data) {
     for (const f of withFeedback) {
       if (f.note) lines.push(`### ${f.path}`, '', f.note, '');
       for (const c of f.comments || []) {
-        lines.push(`### ${f.path}:${c.line}`, '');
+        lines.push(`### ${f.path}:${c.line}${c.endLine ? '-' + c.endLine : ''}`, '');
         if (c.code) lines.push('```', c.code, '```');
         lines.push(c.text, '');
       }
@@ -681,7 +681,7 @@ class CommitTreeProvider {
     const lines = [`${STATUS_LABEL[f.status] || f.status}: ${f.path}`];
     if (risks.length) lines.push(`⚠ Review carefully: ${risks.join(', ')}`);
     if (note) lines.push(`📝 ${note}`);
-    for (const c of comments) lines.push(`💬 L${c.line}: ${c.text}`);
+    for (const c of comments) lines.push(`💬 L${c.line}${c.endLine ? '-' + c.endLine : ''}: ${c.text}`);
     if (isReviewed) lines.push('✓ Reviewed');
     item.tooltip = lines.join('\n');
     item.command = {
@@ -760,8 +760,11 @@ function commentRangeFor(documentUri, editors, root) {
   if (!locOf(documentUri, root)) return [];
   const ed = editors.find((e) => e.document.uri.toString() === documentUri.toString());
   if (!ed) return [];
-  const line = ed.selection.active.line;
-  return [new vscode.Range(line, 0, line, 0)];
+  const sel = ed.selection;
+  // multi-line selection → the whole span is commentable; else the cursor line
+  const start = sel.start ? sel.start.line : sel.active.line;
+  const end = sel.end ? sel.end.line : sel.active.line;
+  return [new vscode.Range(start, 0, end, 0)];
 }
 
 function changeResources(root, files, ctx) {
@@ -839,9 +842,12 @@ function activate(context) {
     const loc = locOf(reply.thread.uri, provider.repoRoot);
     if (!loc || !reply.text) return;
     const line = reply.thread.range.start.line + 1; // store 1-based
+    const endLine = reply.thread.range.end.line + 1;
     const store = { ...provider.comments() };
     const key = `${loc.ref}:${loc.rel}`;
-    store[key] = [...(store[key] || []), { line, text: reply.text }];
+    const entry = { line, text: reply.text };
+    if (endLine > line) entry.endLine = endLine;
+    store[key] = [...(store[key] || []), entry];
     await provider.state.update('cft.comments', store);
     reply.thread.comments = [...reply.thread.comments, commentBody(reply.text)];
     reply.thread.canReply = true;
@@ -873,7 +879,7 @@ function activate(context) {
     for (const c of provider.comments()[key] || []) {
       const threadKey = `${key}:${c.line}`;
       if (liveThreads.has(threadKey)) continue;
-      const range = new vscode.Range(c.line - 1, 0, c.line - 1, 0);
+      const range = new vscode.Range(c.line - 1, 0, (c.endLine || c.line) - 1, 0);
       const thread = controller.createCommentThread(document.uri, range, [commentBody(c.text)]);
       thread.canReply = true;
       thread.contextValue = 'saved';
@@ -891,9 +897,10 @@ function activate(context) {
   });
   const selectionListener = vscode.window.onDidChangeTextEditorSelection((e) => {
     if (!locOf(e.textEditor.document.uri, provider.repoRoot)) return;
-    const line = e.textEditor.selection.active.line;
-    if (line === lastCommentLine) return; // typing within a line: no redraw, no flicker
-    lastCommentLine = line;
+    const sel = e.textEditor.selection;
+    const span = `${sel.start.line}-${sel.end.line}`;
+    if (span === lastCommentLine) return; // typing within the same span: no redraw, no flicker
+    lastCommentLine = span;
     // ponytail: reassigning the provider pokes VS Code into re-querying ranges
     controller.commentingRangeProvider = rangeProvider;
   });
@@ -928,8 +935,14 @@ function activate(context) {
               if (content === undefined && f.status !== 'D') {
                 content = await git(root, ['show', `${ctx.target}:${f.path}`]).catch(() => '');
               }
-              const code = content ? (content.split('\n')[c.line - 1] || '').trim() : '';
-              comments.push({ line: c.line, text: c.text, code });
+              let code = '';
+              if (content) {
+                const all = content.split('\n');
+                const end = Math.min(c.endLine || c.line, c.line + 7); // cap the quote at 8 lines
+                code = all.slice(c.line - 1, end).join('\n').trim();
+                if ((c.endLine || c.line) > end) code += '\n…';
+              }
+              comments.push({ line: c.line, endLine: c.endLine, text: c.text, code });
             }
           }
           comments.sort((a, b) => a.line - b.line);

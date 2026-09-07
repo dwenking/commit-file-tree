@@ -276,7 +276,10 @@ const md = buildSummaryMd({
       risks: [],
       reviewed: true,
       note: 'looks fine overall',
-      comments: [{ line: 42, text: 'do not hardcode this', code: 'const t = 5000;' }],
+      comments: [
+        { line: 42, text: 'do not hardcode this', code: 'const t = 5000;' },
+        { line: 50, endLine: 53, text: 'extract this block', code: 'a\nb' },
+      ],
     },
     { path: 'package-lock.json', status: 'M', risks: ['lockfile'], reviewed: false, comments: [] },
   ],
@@ -284,6 +287,8 @@ const md = buildSummaryMd({
 for (const expected of [
   '# Code review feedback (aaa..bbb)',
   '### src/a.ts:42',
+  '### src/a.ts:50-53',
+  'extract this block',
   'const t = 5000;',
   'do not hardcode this',
   'looks fine overall',
@@ -305,6 +310,10 @@ const otherEditor = {
 let ranges = commentRangeFor(docUri, [otherEditor, editorShowingDoc], '/repo');
 assert.strictEqual(ranges.length, 1);
 assert.deepStrictEqual([ranges[0].start.line, ranges[0].end.line], [41, 41]);
+// multi-line selection → the whole span is commentable
+const multiSel = { document: { uri: docUri }, selection: { start: { line: 3 }, end: { line: 7 }, active: { line: 7 } } };
+ranges = commentRangeFor(docUri, [multiSel], '/repo');
+assert.deepStrictEqual([ranges[0].start.line, ranges[0].end.line], [3, 7]);
 // document not visible in any editor → no ranges
 assert.deepStrictEqual(commentRangeFor(docUri, [otherEditor], '/repo'), []);
 // file outside the repo → no ranges
