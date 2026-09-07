@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.4.1
+- Archive-on-export is now undoable: the toast offers "Undo Archive", and "Restore Last Archived Round" in the command palette brings back the most recent round anytime. Archives are stored per round.
+
 ## 0.4.0
 - Exporting a review summary now archives the delivered comments and file notes, so each review round starts clean after you paste feedback to the agent. Archives are kept in workspace storage.
 - File notes outside the change set are exported too (own section), matching comments.

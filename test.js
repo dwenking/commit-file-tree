@@ -351,16 +351,25 @@ assert.ok(!md.includes('Comments outside this change'));
   assert.deepStrictEqual(counts, { comments: 1, notes: 1 });
   assert.deepStrictEqual(mem['cft.comments'], {});
   assert.deepStrictEqual(mem['cft.notes'], {});
-  assert.deepStrictEqual(mem['cft.comments.archived']['sha1:a.js'], [{ line: 1, text: 'old' }]);
-  // second round merges instead of overwriting
+  assert.strictEqual(mem['cft.archive.rounds'].length, 1);
+  // second round becomes its own archive entry
   mem['cft.comments'] = { 'sha1:a.js': [{ line: 9, text: 'new' }] };
   mem['cft.notes'] = { 'sha1:a.js': 'note two' };
-  counts = await p.archiveReviewData();
-  assert.strictEqual(mem['cft.comments.archived']['sha1:a.js'].length, 2);
-  assert.strictEqual(mem['cft.notes.archived']['sha1:a.js'], 'note one\n---\nnote two');
+  await p.archiveReviewData();
+  assert.strictEqual(mem['cft.archive.rounds'].length, 2);
+  // undo restores only the most recent round and merges into active state
+  assert.strictEqual(await p.restoreLastRound(), true);
+  assert.strictEqual(mem['cft.archive.rounds'].length, 1);
+  assert.deepStrictEqual(mem['cft.comments']['sha1:a.js'], [{ line: 9, text: 'new' }]);
+  assert.strictEqual(mem['cft.notes']['sha1:a.js'], 'note two');
+  // restore again → round one; then nothing left to restore
+  assert.strictEqual(await p.restoreLastRound(), true);
+  assert.deepStrictEqual(mem['cft.comments']['sha1:a.js'].map((c) => c.text).sort(), ['new', 'old']);
+  assert.strictEqual(mem['cft.notes']['sha1:a.js'], 'note two\n---\nnote one');
+  assert.strictEqual(await p.restoreLastRound(), false);
   // clear wipes everything including archives
   await p.clearReviewData();
-  assert.strictEqual(mem['cft.comments.archived'], undefined);
+  assert.strictEqual(mem['cft.archive.rounds'], undefined);
 })();
 
 // Outside section renders file notes (no line number) with their source

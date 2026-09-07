@@ -382,33 +382,46 @@ class CommitTreeProvider {
     return [ctx.target, ctx.base, 'working'].flatMap((ref) => store[`${ref}:${filePath}`] || []);
   }
 
-  // Export ends a review round: move comments and notes to the archive so the
-  // next round starts clean. Nothing is deleted — archives stay in storage.
+  // Export ends a review round: move comments and notes into a per-round
+  // archive so the next round starts clean. Rounds can be restored one by one.
   async archiveReviewData() {
     const comments = this.comments();
     const notes = this.notes();
-    const archC = { ...this.state.get('cft.comments.archived', {}) };
-    const archN = { ...this.state.get('cft.notes.archived', {}) };
-    let nComments = 0;
-    let nNotes = 0;
-    for (const [k, list] of Object.entries(comments)) {
-      archC[k] = [...(archC[k] || []), ...list];
-      nComments += list.length;
-    }
-    for (const [k, text] of Object.entries(notes)) {
-      archN[k] = archN[k] ? `${archN[k]}\n---\n${text}` : text;
-      nNotes++;
-    }
-    await this.state.update('cft.comments.archived', archC);
-    await this.state.update('cft.notes.archived', archN);
+    const rounds = [...this.state.get('cft.archive.rounds', [])];
+    rounds.push({ at: Date.now(), comments, notes });
+    await this.state.update('cft.archive.rounds', rounds);
     await this.state.update('cft.comments', {});
     await this.state.update('cft.notes', {});
     this.refresh();
-    return { comments: nComments, notes: nNotes };
+    return {
+      comments: Object.values(comments).reduce((n, list) => n + list.length, 0),
+      notes: Object.keys(notes).length,
+    };
+  }
+
+  // Undo for archiveReviewData: merge the most recent round back into the
+  // active state. Returns false when there is nothing to restore.
+  async restoreLastRound() {
+    const rounds = [...this.state.get('cft.archive.rounds', [])];
+    const round = rounds.pop();
+    if (!round) return false;
+    const comments = { ...this.comments() };
+    const notes = { ...this.notes() };
+    for (const [k, list] of Object.entries(round.comments)) {
+      comments[k] = [...(comments[k] || []), ...list];
+    }
+    for (const [k, text] of Object.entries(round.notes)) {
+      notes[k] = notes[k] ? `${notes[k]}\n---\n${text}` : text;
+    }
+    await this.state.update('cft.archive.rounds', rounds);
+    await this.state.update('cft.comments', comments);
+    await this.state.update('cft.notes', notes);
+    this.refresh();
+    return true;
   }
 
   async clearReviewData() {
-    const keys = ['cft.comments', 'cft.notes', 'cft.comments.archived', 'cft.notes.archived', 'cft.reviewed'];
+    const keys = ['cft.comments', 'cft.notes', 'cft.archive.rounds', 'cft.reviewed'];
     for (const k of keys) await this.state.update(k, undefined);
     this.refresh();
   }
@@ -1054,9 +1067,26 @@ function activate(context) {
     const counts = await provider.archiveReviewData();
     liveThreads.forEach((t) => t.dispose());
     liveThreads.clear();
-    vscode.window.showInformationMessage(
-      `Review summary copied — archived ${counts.comments} comment(s) and ${counts.notes} note(s) for the next round.`
-    );
+    if (counts.comments || counts.notes) {
+      const pick = await vscode.window.showInformationMessage(
+        `Review summary copied — archived ${counts.comments} comment(s) and ${counts.notes} note(s) for the next round.`,
+        'Undo Archive'
+      );
+      if (pick === 'Undo Archive') await restoreLastRound();
+    } else {
+      vscode.window.showInformationMessage('Review summary copied to clipboard.');
+    }
+  }
+
+  async function restoreLastRound() {
+    const restored = await provider.restoreLastRound();
+    if (!restored) {
+      vscode.window.showInformationMessage('Commit Review Tree: no archived round to restore.');
+      return;
+    }
+    // Re-create threads for documents that are already open.
+    vscode.workspace.textDocuments.forEach(restoreThreads);
+    vscode.window.showInformationMessage('Last archived round restored.');
   }
 
   async function clearReviewData() {
@@ -1119,6 +1149,7 @@ function activate(context) {
     vscode.commands.registerCommand('commitFileTree.deleteThread', deleteThread),
     vscode.commands.registerCommand('commitFileTree.exportSummary', exportSummary),
     vscode.commands.registerCommand('commitFileTree.clearReviewData', clearReviewData),
+    vscode.commands.registerCommand('commitFileTree.restoreLastRound', restoreLastRound),
     vscode.commands.registerCommand('commitFileTree.revealInDeps', revealInDeps),
     vscode.window.registerFileDecorationProvider({
       provideFileDecoration(uri) {
