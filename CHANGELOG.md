@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.3.1
+- Dependency view covers Vue/Svelte, Go, Rust, C/C++, C#, Ruby, PHP, Scala/Groovy in addition to JS/TS, Python, Java/Kotlin.
+
 ## 0.3.0
 - Dependency view supports Java and Kotlin (fully-qualified imports resolved by package path, incl. static and wildcard imports).
 

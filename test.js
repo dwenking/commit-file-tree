@@ -169,6 +169,53 @@ assert.strictEqual(resolveImport('backend/mod-a/src/main/java/com/x/A.java', 'co
 assert.strictEqual(resolveImport('backend/mod-a/src/main/java/com/x/A.java', 'com.x.pkg.*', javaSet), 'backend/mod-c/src/main/java/com/x/pkg/C.kt');
 assert.strictEqual(resolveImport('backend/mod-a/src/main/java/com/x/A.java', 'java.util.List', javaSet), undefined);
 
+// Vue SFCs parse with JS rules and resolve as import targets
+assert.deepStrictEqual(parseImports('src/App.vue', `<script>import C from './C.vue';</script>`), ['./C.vue']);
+assert.strictEqual(resolveImport('src/App.vue', './C.vue', new Set(['src/C.vue'])), 'src/C.vue');
+assert.strictEqual(resolveImport('src/App.vue', './pages/Home', new Set(['src/pages/Home.vue'])), 'src/pages/Home.vue');
+
+// Go: single and block imports; package path resolves to a directory
+assert.deepStrictEqual(
+  parseImports('svc/main.go', 'import "corp/mod/util"\nimport (\n\tfoo "corp/mod/db"\n\t"fmt"\n)\n'),
+  ['corp/mod/util', 'corp/mod/db', 'fmt']
+);
+assert.strictEqual(resolveImport('svc/main.go', 'corp/mod/util', new Set(['mod/util/strings.go'])), 'mod/util/strings.go');
+
+// Rust: use crate paths (trailing items dropped) and mod declarations
+assert.deepStrictEqual(parseImports('src/main.rs', 'use crate::db::pool::Pool;\nmod handlers;\n'), [
+  'crate::db::pool::Pool',
+  'handlers',
+]);
+assert.strictEqual(resolveImport('src/main.rs', 'crate::db::pool::Pool', new Set(['src/db/pool.rs'])), 'src/db/pool.rs');
+assert.strictEqual(resolveImport('src/main.rs', 'handlers', new Set(['src/handlers/mod.rs'])), 'src/handlers/mod.rs');
+
+// C/C++: quoted and angled includes, relative or by path suffix
+assert.deepStrictEqual(parseImports('a/b.cpp', '#include "util/log.h"\n#include <vector>\n'), ['util/log.h', 'vector']);
+assert.strictEqual(resolveImport('src/a/b.cpp', 'util/log.h', new Set(['src/util/log.h'])), 'src/util/log.h');
+assert.strictEqual(resolveImport('src/a/b.cpp', '../common.h', new Set(['src/common.h'])), 'src/common.h');
+
+// C#: using namespace → directory or file path suffix
+assert.deepStrictEqual(parseImports('A.cs', 'using Corp.App.Models;\nusing (var x = y) {}\n'), ['Corp.App.Models']);
+assert.strictEqual(
+  resolveImport('src/Corp.App/Api/A.cs', 'Corp.App.Models', new Set(['src/Corp.App/Models/User.cs'])),
+  'src/Corp.App/Models/User.cs'
+);
+
+// Ruby: require_relative and require by suffix
+assert.deepStrictEqual(parseImports('app/a.rb', "require 'app/helpers/text'\nrequire_relative 'b'\n"), [
+  'app/helpers/text',
+  'b',
+]);
+assert.strictEqual(resolveImport('app/a.rb', 'b', new Set(['app/b.rb'])), 'app/b.rb');
+assert.strictEqual(resolveImport('lib/x.rb', 'app/helpers/text', new Set(['app/helpers/text.rb'])), 'app/helpers/text.rb');
+
+// PHP: PSR-4 use statements drop the vendor namespace prefix
+assert.deepStrictEqual(parseImports('src/A.php', 'use App\\Service\\Mailer;\n'), ['App\\Service\\Mailer']);
+assert.strictEqual(
+  resolveImport('src/Controller/A.php', 'App\\Service\\Mailer', new Set(['src/Service/Mailer.php'])),
+  'src/Service/Mailer.php'
+);
+
 const sources = new Map([
   ['src/a.ts', `import b from './b';`],
   ['src/b.ts', `export const b = 1;`],

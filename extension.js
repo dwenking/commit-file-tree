@@ -99,7 +99,7 @@ const STATUS_LABEL = { A: 'Added', M: 'Modified', D: 'Deleted', R: 'Renamed', C:
 
 // --- Dependency analysis (import-level, heuristic) ---------------------------
 
-const JS_EXTS = ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs'];
+const JS_EXTS = ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.mts', '.cts', '.vue', '.svelte'];
 const JS_IMPORT_RES = [
   /import\s+[^'"()]*?from\s+['"]([^'"]+)['"]/g,
   /import\s*\(\s*['"]([^'"]+)['"]/g,
@@ -107,54 +107,128 @@ const JS_IMPORT_RES = [
   /export\s+[^'"()]*?from\s+['"]([^'"]+)['"]/g,
 ];
 const PY_IMPORT_RES = [/^\s*import\s+([\w.]+)/gm, /^\s*from\s+([.\w]+)\s+import/gm];
-const JAVA_EXTS = ['.java', '.kt', '.kts'];
+const JAVA_EXTS = ['.java', '.kt', '.kts', '.scala', '.groovy'];
 const JAVA_IMPORT_RES = [/^\s*import\s+(?:static\s+)?(\w+(?:\.\w+)*(?:\.\*)?)/gm];
+const C_EXTS = ['.c', '.h', '.cpp', '.hpp', '.cc', '.hh', '.cxx', '.hxx'];
+const C_IMPORT_RES = [/^\s*#\s*include\s*["<]([^">]+)[">]/gm];
+const RUST_IMPORT_RES = [/^\s*(?:pub\s+)?use\s+([\w:]+)/gm, /^\s*(?:pub\s+)?mod\s+(\w+)\s*;/gm];
+const CS_IMPORT_RES = [/^\s*using\s+(?:static\s+)?(\w+(?:\.\w+)*)\s*;/gm];
+const RB_IMPORT_RES = [/require(?:_relative)?\s*\(?\s*['"]([^'"]+)['"]/g];
+const PHP_IMPORT_RES = [/^\s*use\s+([\w\\]+)/gm, /(?:require|include)(?:_once)?\s*\(?\s*['"]([^'"]+)['"]/g];
+
+const LANG_RES = new Map([
+  ...JS_EXTS.map((e) => [e, JS_IMPORT_RES]),
+  ...JAVA_EXTS.map((e) => [e, JAVA_IMPORT_RES]),
+  ...C_EXTS.map((e) => [e, C_IMPORT_RES]),
+  ['.py', PY_IMPORT_RES],
+  ['.rs', RUST_IMPORT_RES],
+  ['.cs', CS_IMPORT_RES],
+  ['.rb', RB_IMPORT_RES],
+  ['.php', PHP_IMPORT_RES],
+]);
 
 // Extract import specifiers from source text, by file extension.
 function parseImports(filePath, source) {
   const ext = path.posix.extname(filePath);
-  const regexes =
-    ext === '.py'
-      ? PY_IMPORT_RES
-      : JAVA_EXTS.includes(ext)
-        ? JAVA_IMPORT_RES
-        : JS_EXTS.includes(ext)
-          ? JS_IMPORT_RES
-          : [];
   const specs = [];
-  for (const re of regexes) {
+  for (const re of LANG_RES.get(ext) || []) {
     re.lastIndex = 0;
     let m;
     while ((m = re.exec(source))) specs.push(m[1]);
   }
+  if (ext === '.go') {
+    // single imports and import ( ... ) blocks
+    for (const m of source.matchAll(/^\s*import\s+(?:\w+\s+)?"([^"]+)"/gm)) specs.push(m[1]);
+    for (const b of source.matchAll(/import\s*\(([^)]*)\)/g)) {
+      for (const m of b[1].matchAll(/"([^"]+)"/g)) specs.push(m[1]);
+    }
+  }
   return specs;
 }
 
+// Does some changed file's path (sans extension) end with this suffix?
+function bySuffix(changedSet, exts, suffix, dirOnly) {
+  for (const f of changedSet) {
+    if (exts && !exts.includes(path.posix.extname(f))) continue;
+    const noExt = '/' + f.replace(/\.[^./]+$/, '');
+    if (dirOnly ? path.posix.dirname(noExt).endsWith(suffix) : noExt.endsWith(suffix)) return f;
+  }
+  return undefined;
+}
+
 // Resolve an import specifier from `fromFile` to a path in `changedSet`, or undefined.
+// All of this is heuristic: fully-qualified names and include paths resolve by
+// path suffix, so source-root prefixes (src/main/java/, module dirs) don't matter.
+// ponytail: identical trailing paths across modules may cross-match
 function resolveImport(fromFile, spec, changedSet) {
   const dir = path.posix.dirname(fromFile);
+  const ext = path.posix.extname(fromFile);
   const candidates = [];
-  if (JAVA_EXTS.includes(path.posix.extname(fromFile))) {
-    // Fully-qualified names resolve by package-path suffix, so source-root
-    // prefixes (backend/module/src/main/java/) don't matter.
-    // ponytail: identical package+class across modules may cross-match
+
+  if (JAVA_EXTS.includes(ext)) {
     const wildcard = spec.endsWith('.*');
     const clean = spec.replace(/\.\*$/, '');
+    if (wildcard) return bySuffix(changedSet, JAVA_EXTS, '/' + clean.replace(/\./g, '/'), true);
     // plain import → class path; static import → also try dropping the member
-    const classPaths = [clean, clean.split('.').slice(0, -1).join('.')]
-      .filter(Boolean)
-      .map((c) => '/' + c.replace(/\./g, '/'));
-    for (const f of changedSet) {
-      if (!JAVA_EXTS.includes(path.posix.extname(f))) continue;
-      const noExt = f.replace(/\.(java|kt|kts)$/, '');
-      if (wildcard && path.posix.dirname('/' + noExt).endsWith(classPaths[0])) return f;
-      if (!wildcard && classPaths.some((c) => ('/' + noExt).endsWith(c))) return f;
+    for (const c of [clean, clean.split('.').slice(0, -1).join('.')]) {
+      const hit = c && bySuffix(changedSet, JAVA_EXTS, '/' + c.replace(/\./g, '/'));
+      if (hit) return hit;
     }
     return undefined;
   }
-  if (fromFile.endsWith('.py')) {
-    const rel = spec.replace(/^\.+/, '');
-    const base = rel.replace(/\./g, '/');
+  if (ext === '.go') {
+    // package path → directory of changed .go files; longest suffix wins
+    const segs = spec.split('/');
+    for (let i = 0; i < segs.length; i++) {
+      const hit = bySuffix(changedSet, ['.go'], '/' + segs.slice(i).join('/'), true);
+      if (hit) return hit;
+    }
+    return undefined;
+  }
+  if (ext === '.rs') {
+    const segs = spec.split('::').filter((s) => !['crate', 'self', 'super', ''].includes(s));
+    // mod foo; → sibling foo.rs / foo/mod.rs
+    if (!spec.includes('::')) {
+      candidates.push(path.posix.join(dir, `${spec}.rs`), path.posix.join(dir, spec, 'mod.rs'));
+    }
+    // use a::b::Item — trailing segments may be items, drop from the right
+    for (let k = segs.length; k >= 1; k--) {
+      const p = '/' + segs.slice(0, k).join('/');
+      const hit =
+        bySuffix(changedSet, ['.rs'], p) ||
+        bySuffix(new Set([...changedSet].filter((f) => f.endsWith('/mod.rs'))), null, p + '/mod');
+      if (hit) return hit;
+    }
+  } else if (C_EXTS.includes(ext)) {
+    candidates.push(path.posix.normalize(path.posix.join(dir, spec)));
+    const hit = bySuffix(changedSet, null, '/' + spec.replace(/\.[^./]+$/, ''));
+    if (hit) return hit;
+  } else if (ext === '.cs') {
+    // namespace segments map to folders, but project dirs may keep dots
+    // (Corp.App/Models) — drop leading segments until a suffix matches
+    const segs = spec.split('.');
+    for (let i = 0; i < segs.length; i++) {
+      const p = '/' + segs.slice(i).join('/');
+      const hit = bySuffix(changedSet, ['.cs'], p) || bySuffix(changedSet, ['.cs'], p, true);
+      if (hit) return hit;
+    }
+  } else if (ext === '.rb') {
+    candidates.push(path.posix.normalize(path.posix.join(dir, `${spec}.rb`)), `${spec}.rb`);
+    const hit = bySuffix(changedSet, ['.rb'], '/' + spec.replace(/\.rb$/, ''));
+    if (hit) return hit;
+  } else if (ext === '.php') {
+    if (spec.includes('\\')) {
+      const segs = spec.split('\\').filter(Boolean);
+      // PSR-4: namespace prefix maps to a source root — drop leading segments
+      for (let i = 0; i < segs.length; i++) {
+        const hit = bySuffix(changedSet, ['.php'], '/' + segs.slice(i).join('/'));
+        if (hit) return hit;
+      }
+    } else {
+      candidates.push(path.posix.normalize(path.posix.join(dir, spec)));
+    }
+  } else if (ext === '.py') {
+    const base = spec.replace(/^\.+/, '').replace(/\./g, '/');
     candidates.push(`${base}.py`, `${base}/__init__.py`);
     if (spec.startsWith('.')) candidates.push(path.posix.join(dir, `${base}.py`));
   } else if (spec.startsWith('.')) {
