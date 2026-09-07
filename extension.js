@@ -97,6 +97,21 @@ function riskReasons(file) {
 
 const STATUS_LABEL = { A: 'Added', M: 'Modified', D: 'Deleted', R: 'Renamed', C: 'Copied' };
 
+// If every file beneath a tree node shares status D (or A), the folder itself
+// was effectively deleted (or added). Mixed content returns undefined.
+function aggStatus(node) {
+  let s;
+  const walk = (n) => {
+    for (const f of n.files) {
+      if (s === undefined) s = f.status;
+      else if (s !== f.status) s = null;
+    }
+    for (const [, c] of n.dirs) walk(c);
+  };
+  walk(node);
+  return s === 'D' || s === 'A' ? s : undefined;
+}
+
 // --- Dependency analysis (import-level, heuristic) ---------------------------
 
 const JS_EXTS = ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.mts', '.cts', '.vue', '.svelte'];
@@ -660,6 +675,13 @@ class CommitTreeProvider {
         item.node = child;
         item.ctx = ctx;
         item.iconPath = vscode.ThemeIcon.Folder;
+        const agg = aggStatus(child);
+        if (agg) {
+          item.resourceUri = vscode.Uri.file(path.join(this.repoRoot, name)).with({
+            query: `cftStatus=${agg}&rev=0`,
+          });
+          item.tooltip = agg === 'D' ? 'Folder deleted (all files inside removed)' : 'New folder (all files inside added)';
+        }
         return item;
       });
     const files = node.files
@@ -988,5 +1010,6 @@ module.exports = {
   resolveImport,
   buildEdges,
   buildSummaryMd,
+  aggStatus,
   CommitTreeProvider,
 };

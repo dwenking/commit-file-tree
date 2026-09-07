@@ -147,6 +147,20 @@ const cp = require('child_process');
   console.log('ok');
 })();
 
+// Folder aggregate status: all-deleted → D, all-added → A, mixed → undefined
+const { aggStatus } = require('./extension.js');
+const delTree = buildTree([
+  { status: 'D', path: 'gone/a.js' },
+  { status: 'D', path: 'gone/sub/b.js' },
+]);
+assert.strictEqual(aggStatus(delTree.dirs.get('gone')), 'D');
+const mixedTree = buildTree([
+  { status: 'D', path: 'x/a.js' },
+  { status: 'M', path: 'x/b.js' },
+]);
+assert.strictEqual(aggStatus(mixedTree.dirs.get('x')), undefined);
+assert.strictEqual(aggStatus(buildTree([{ status: 'A', path: 'new/a.js' }]).dirs.get('new')), 'A');
+
 // Risk flags: deletions and sensitive paths, nothing for ordinary files
 const { riskReasons } = require('./extension.js');
 assert.deepStrictEqual(riskReasons({ status: 'D', path: 'src/a.js' }), ['deleted']);

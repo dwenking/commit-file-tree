@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.3.6
+- Folders whose files are all deleted (or all added) are colored and badged like their files, in combined and commit trees.
+
 ## 0.3.5
 - Commit rows show only the author, matching the native Graph; diff stats, file count, time, and hash moved to the hover.
 
