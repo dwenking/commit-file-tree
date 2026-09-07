@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.4.4
+- Removed the title-bar restore button; restoring stays available via the export Undo toast and the command palette.
+
 ## 0.4.3
 - Store page refresh: single hero screenshot, feature copy updated for review rounds and multi-line comments.
 
