@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.0
+- Exporting a review summary now archives the delivered comments and file notes, so each review round starts clean after you paste feedback to the agent. Archives are kept in workspace storage.
+- File notes outside the change set are exported too (own section), matching comments.
+- New command: "Commit Review Tree: Clear All Review Data" (comments, notes, reviewed marks, archives).
+
 ## 0.3.16
 - Export no longer drops comments made outside the unpushed change set — they appear under "Comments outside this change" with file, line, and source revision.
 

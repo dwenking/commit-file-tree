@@ -339,3 +339,35 @@ for (const expected of [
 }
 // and the section is absent when there is nothing outside
 assert.ok(!md.includes('Comments outside this change'));
+
+// Archive-on-export: comments and notes move to the archive, active state resets
+(async () => {
+  const mem = {};
+  const state = { get: (k, d) => (k in mem ? mem[k] : d), update: async (k, v) => { mem[k] = v; } };
+  const p = new CommitTreeProvider(state);
+  mem['cft.comments'] = { 'sha1:a.js': [{ line: 1, text: 'old' }] };
+  mem['cft.notes'] = { 'sha1:a.js': 'note one' };
+  let counts = await p.archiveReviewData();
+  assert.deepStrictEqual(counts, { comments: 1, notes: 1 });
+  assert.deepStrictEqual(mem['cft.comments'], {});
+  assert.deepStrictEqual(mem['cft.notes'], {});
+  assert.deepStrictEqual(mem['cft.comments.archived']['sha1:a.js'], [{ line: 1, text: 'old' }]);
+  // second round merges instead of overwriting
+  mem['cft.comments'] = { 'sha1:a.js': [{ line: 9, text: 'new' }] };
+  mem['cft.notes'] = { 'sha1:a.js': 'note two' };
+  counts = await p.archiveReviewData();
+  assert.strictEqual(mem['cft.comments.archived']['sha1:a.js'].length, 2);
+  assert.strictEqual(mem['cft.notes.archived']['sha1:a.js'], 'note one\n---\nnote two');
+  // clear wipes everything including archives
+  await p.clearReviewData();
+  assert.strictEqual(mem['cft.comments.archived'], undefined);
+})();
+
+// Outside section renders file notes (no line number) with their source
+const mdNoteOutside = buildSummaryMd({
+  rangeLabel: 'x..y',
+  files: [],
+  outside: [{ path: 'src/config.ts', ref: 'working', text: 'update this config too' }],
+});
+assert.ok(mdNoteOutside.includes('### src/config.ts (working copy · file note)'), 'note-outside heading missing');
+assert.ok(mdNoteOutside.includes('update this config too'));

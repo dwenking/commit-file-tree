@@ -306,7 +306,8 @@ function buildSummaryMd(data) {
     lines.push('## Comments outside this change', '');
     for (const c of data.outside) {
       const at = c.ref === 'working' ? 'working copy' : c.ref.slice(0, 7);
-      lines.push(`### ${c.path}:${c.line}${c.endLine ? '-' + c.endLine : ''} (${at})`, '');
+      const loc = c.line ? `:${c.line}${c.endLine ? '-' + c.endLine : ''}` : '';
+      lines.push(`### ${c.path}${loc} (${at}${c.line ? '' : ' · file note'})`, '');
       if (c.code) lines.push('```', c.code, '```');
       lines.push(c.text, '');
     }
@@ -379,6 +380,37 @@ class CommitTreeProvider {
   commentsFor(ctx, filePath) {
     const store = this.comments();
     return [ctx.target, ctx.base, 'working'].flatMap((ref) => store[`${ref}:${filePath}`] || []);
+  }
+
+  // Export ends a review round: move comments and notes to the archive so the
+  // next round starts clean. Nothing is deleted — archives stay in storage.
+  async archiveReviewData() {
+    const comments = this.comments();
+    const notes = this.notes();
+    const archC = { ...this.state.get('cft.comments.archived', {}) };
+    const archN = { ...this.state.get('cft.notes.archived', {}) };
+    let nComments = 0;
+    let nNotes = 0;
+    for (const [k, list] of Object.entries(comments)) {
+      archC[k] = [...(archC[k] || []), ...list];
+      nComments += list.length;
+    }
+    for (const [k, text] of Object.entries(notes)) {
+      archN[k] = archN[k] ? `${archN[k]}\n---\n${text}` : text;
+      nNotes++;
+    }
+    await this.state.update('cft.comments.archived', archC);
+    await this.state.update('cft.notes.archived', archN);
+    await this.state.update('cft.comments', {});
+    await this.state.update('cft.notes', {});
+    this.refresh();
+    return { comments: nComments, notes: nNotes };
+  }
+
+  async clearReviewData() {
+    const keys = ['cft.comments', 'cft.notes', 'cft.comments.archived', 'cft.notes.archived', 'cft.reviewed'];
+    for (const k of keys) await this.state.update(k, undefined);
+    this.refresh();
   }
 
   async toggleReviewed(item) {
@@ -977,9 +1009,17 @@ function activate(context) {
         })
       ),
     };
-    // Comments on files or revisions outside the unpushed range go in their own section.
+    // Comments and notes on files or revisions outside the unpushed range go
+    // in their own section — user feedback is never dropped.
     const filePaths = new Set(files.map((f) => f.path));
     data.outside = [];
+    for (const [key, text] of Object.entries(notes)) {
+      const idx = key.indexOf(':');
+      const ref = key.slice(0, idx);
+      const rel = key.slice(idx + 1);
+      if (filePaths.has(rel) && refs.has(ref)) continue; // already in action items
+      data.outside.push({ path: rel, ref, text });
+    }
     for (const [key, list] of Object.entries(store)) {
       const idx = key.indexOf(':');
       const ref = key.slice(0, idx);
@@ -1010,7 +1050,25 @@ function activate(context) {
     await vscode.env.clipboard.writeText(md);
     const doc = await vscode.workspace.openTextDocument({ content: md, language: 'markdown' });
     await vscode.window.showTextDocument(doc);
-    vscode.window.showInformationMessage('Review summary copied to clipboard.');
+    // Export ends the round: archive delivered feedback so the next round starts clean.
+    const counts = await provider.archiveReviewData();
+    liveThreads.forEach((t) => t.dispose());
+    liveThreads.clear();
+    vscode.window.showInformationMessage(
+      `Review summary copied — archived ${counts.comments} comment(s) and ${counts.notes} note(s) for the next round.`
+    );
+  }
+
+  async function clearReviewData() {
+    const pick = await vscode.window.showWarningMessage(
+      'Clear all review data (comments, notes, reviewed marks, archives)?',
+      { modal: true },
+      'Clear'
+    );
+    if (pick !== 'Clear') return;
+    await provider.clearReviewData();
+    liveThreads.forEach((t) => t.dispose());
+    liveThreads.clear();
   }
 
   const view = vscode.window.createTreeView('commitFileTree', { treeDataProvider: provider });
@@ -1060,6 +1118,7 @@ function activate(context) {
     vscode.commands.registerCommand('commitFileTree.addComment', saveComment),
     vscode.commands.registerCommand('commitFileTree.deleteThread', deleteThread),
     vscode.commands.registerCommand('commitFileTree.exportSummary', exportSummary),
+    vscode.commands.registerCommand('commitFileTree.clearReviewData', clearReviewData),
     vscode.commands.registerCommand('commitFileTree.revealInDeps', revealInDeps),
     vscode.window.registerFileDecorationProvider({
       provideFileDecoration(uri) {
