@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.3.0
+- Dependency view supports Java and Kotlin (fully-qualified imports resolved by package path, incl. static and wildcard imports).
+
 ## 0.2.9
 - Marketplace search keywords.
 

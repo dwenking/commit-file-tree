@@ -107,11 +107,20 @@ const JS_IMPORT_RES = [
   /export\s+[^'"()]*?from\s+['"]([^'"]+)['"]/g,
 ];
 const PY_IMPORT_RES = [/^\s*import\s+([\w.]+)/gm, /^\s*from\s+([.\w]+)\s+import/gm];
+const JAVA_EXTS = ['.java', '.kt', '.kts'];
+const JAVA_IMPORT_RES = [/^\s*import\s+(?:static\s+)?(\w+(?:\.\w+)*(?:\.\*)?)/gm];
 
 // Extract import specifiers from source text, by file extension.
 function parseImports(filePath, source) {
   const ext = path.posix.extname(filePath);
-  const regexes = ext === '.py' ? PY_IMPORT_RES : JS_EXTS.includes(ext) ? JS_IMPORT_RES : [];
+  const regexes =
+    ext === '.py'
+      ? PY_IMPORT_RES
+      : JAVA_EXTS.includes(ext)
+        ? JAVA_IMPORT_RES
+        : JS_EXTS.includes(ext)
+          ? JS_IMPORT_RES
+          : [];
   const specs = [];
   for (const re of regexes) {
     re.lastIndex = 0;
@@ -125,6 +134,24 @@ function parseImports(filePath, source) {
 function resolveImport(fromFile, spec, changedSet) {
   const dir = path.posix.dirname(fromFile);
   const candidates = [];
+  if (JAVA_EXTS.includes(path.posix.extname(fromFile))) {
+    // Fully-qualified names resolve by package-path suffix, so source-root
+    // prefixes (backend/module/src/main/java/) don't matter.
+    // ponytail: identical package+class across modules may cross-match
+    const wildcard = spec.endsWith('.*');
+    const clean = spec.replace(/\.\*$/, '');
+    // plain import → class path; static import → also try dropping the member
+    const classPaths = [clean, clean.split('.').slice(0, -1).join('.')]
+      .filter(Boolean)
+      .map((c) => '/' + c.replace(/\./g, '/'));
+    for (const f of changedSet) {
+      if (!JAVA_EXTS.includes(path.posix.extname(f))) continue;
+      const noExt = f.replace(/\.(java|kt|kts)$/, '');
+      if (wildcard && path.posix.dirname('/' + noExt).endsWith(classPaths[0])) return f;
+      if (!wildcard && classPaths.some((c) => ('/' + noExt).endsWith(c))) return f;
+    }
+    return undefined;
+  }
   if (fromFile.endsWith('.py')) {
     const rel = spec.replace(/^\.+/, '');
     const base = rel.replace(/\./g, '/');

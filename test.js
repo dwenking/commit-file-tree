@@ -155,6 +155,20 @@ assert.strictEqual(resolveImport('src/a.ts', './lib', new Set(['src/lib/index.js
 assert.strictEqual(resolveImport('app/m.py', 'app.util', new Set(['app/util.py'])), 'app/util.py');
 assert.strictEqual(resolveImport('src/a.ts', 'react', new Set(['src/b.ts'])), undefined);
 
+// Java/Kotlin: fully-qualified imports resolve by package-path suffix
+const javaSet = new Set([
+  'backend/mod-b/src/main/java/com/x/util/B.java',
+  'backend/mod-c/src/main/java/com/x/pkg/C.kt',
+]);
+assert.deepStrictEqual(
+  parseImports('A.java', 'package com.x;\nimport com.x.util.B;\nimport static com.x.pkg.C.helper;\nimport com.x.pkg.*;\n'),
+  ['com.x.util.B', 'com.x.pkg.C.helper', 'com.x.pkg.*']
+);
+assert.strictEqual(resolveImport('backend/mod-a/src/main/java/com/x/A.java', 'com.x.util.B', javaSet), 'backend/mod-b/src/main/java/com/x/util/B.java');
+assert.strictEqual(resolveImport('backend/mod-a/src/main/java/com/x/A.java', 'com.x.pkg.C.helper', javaSet), 'backend/mod-c/src/main/java/com/x/pkg/C.kt');
+assert.strictEqual(resolveImport('backend/mod-a/src/main/java/com/x/A.java', 'com.x.pkg.*', javaSet), 'backend/mod-c/src/main/java/com/x/pkg/C.kt');
+assert.strictEqual(resolveImport('backend/mod-a/src/main/java/com/x/A.java', 'java.util.List', javaSet), undefined);
+
 const sources = new Map([
   ['src/a.ts', `import b from './b';`],
   ['src/b.ts', `export const b = 1;`],
