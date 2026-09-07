@@ -814,8 +814,12 @@ function activate(context) {
   const rangeProvider = {
     provideCommentingRanges(document) {
       if (!locOf(document.uri, provider.repoRoot)) return [];
-      const ed = vscode.window.activeTextEditor;
-      if (!ed || ed.document.uri.toString() !== document.uri.toString()) return [];
+      // visibleTextEditors, not activeTextEditor: focus may sit in the comment
+      // widget when ranges are re-queried (e.g. after discarding a draft)
+      const ed = vscode.window.visibleTextEditors.find(
+        (e) => e.document.uri.toString() === document.uri.toString()
+      );
+      if (!ed) return [];
       // single zero-width range on the cursor's line: one steady "+"
       const line = ed.selection.active.line;
       return [new vscode.Range(line, 0, line, 0)];

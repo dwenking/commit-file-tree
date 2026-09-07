@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.3.13
+- Comment "+" no longer disappears after discarding an empty comment draft.
+
 ## 0.3.12
 - New hero screenshot: combined view with the full change tree.
 
