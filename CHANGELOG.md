@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.3.5
+- Commit rows show only the author, matching the native Graph; diff stats, file count, time, and hash moved to the hover.
+
 ## 0.3.4
 - Reveal in Dependency View expands the target's subtree and adds a back button to return to the previous view.
 - Expanding a dependency node now expands its whole subtree; roots stay collapsed.

@@ -603,14 +603,15 @@ class CommitTreeProvider {
     item.contextValue = 'commit';
     item.sha = c.sha;
     item.subject = c.subject;
-    item.description = `+${c.ins} −${c.del} · ${c.files} files · ${c.when}`;
+    item.description = c.author;
     item.iconPath = unpushed
       ? new vscode.ThemeIcon('git-commit', new vscode.ThemeColor('charts.blue'))
       : new vscode.ThemeIcon('git-commit', new vscode.ThemeColor('descriptionForeground'));
     const md = new vscode.MarkdownString();
     md.appendMarkdown(`**${c.subject}**\n\n`);
-    md.appendMarkdown(`\`${c.short}\` ${c.author}, ${c.when}${unpushed ? ' · *unpushed*' : ''}\n\n`);
-    md.appendMarkdown(`${c.files} files changed, **+${c.ins}** **−${c.del}**`);
+    md.appendMarkdown(`${c.author}, ${c.when}${unpushed ? ' · *unpushed*' : ''}\n\n`);
+    md.appendMarkdown(`${c.files} files changed, **+${c.ins}** insertions, **−${c.del}** deletions\n\n`);
+    md.appendMarkdown(`\`${c.short}\``);
     item.tooltip = md;
     return item;
   }

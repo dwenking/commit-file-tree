@@ -90,8 +90,8 @@ const cp = require('child_process');
   let items = await provider.getCommits(repo);
   // c3, c2 are unpushed; "Load more…" hides the single history commit c1
   assert.deepStrictEqual(items.map(lbl), ['c3', 'c2', 'Show pushed history…']);
-  // diff stats live in the dimmed description
-  assert.ok(items[0].description.startsWith('+1 −0'), 'commit description missing stats');
+  // commit rows show only the author; stats live in the hover
+  assert.strictEqual(items[0].description, 't');
 
   provider.loadMore();
   items = await provider.getCommits(repo);
