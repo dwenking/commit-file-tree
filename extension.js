@@ -1029,13 +1029,16 @@ function activate(context) {
             }
           }
           comments.sort((a, b) => a.line - b.line);
-          const anyRef = [...refs].find((r) => reviewed[`${r}:${f.path}`] || notes[`${r}:${f.path}`]);
+          // A file may be marked reviewed under one ref (commit view) and noted
+          // under another (combined view): look each up independently, and
+          // keep every note rather than the first ref's only.
+          const byRef = (map) => [...refs].map((r) => map[`${r}:${f.path}`]).filter(Boolean);
           return {
             path: f.path,
             status: f.status,
             risks: riskReasons(f),
-            reviewed: !!(anyRef && reviewed[`${anyRef}:${f.path}`]),
-            note: anyRef ? notes[`${anyRef}:${f.path}`] : undefined,
+            reviewed: byRef(reviewed).length > 0,
+            note: byRef(notes).join('\n---\n') || undefined,
             comments,
           };
         })

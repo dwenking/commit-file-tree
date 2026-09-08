@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.4.5
+- Export no longer drops a file note when the reviewed mark was set in a different view (commit vs. combined); notes from multiple views are all included.
+
 ## 0.4.4
 - Removed the title-bar restore button; restoring stays available via the export Undo toast and the command palette.
 
