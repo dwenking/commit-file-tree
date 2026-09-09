@@ -6,6 +6,11 @@ When a coding agent works in your repo, it leaves behind a pile of local commits
 
 ![All unpushed changes as one tree, reviewed in a single multi-diff tab](images/combined-all-changes.png)
 
+## Install
+
+- **VS Code**: [Marketplace](https://marketplace.visualstudio.com/items?itemName=dwenking.commit-file-tree), or `ext install dwenking.commit-file-tree` from the command palette.
+- **Cursor** (and other Open VSX editors): search *Commit Review Tree* in the Extensions view, or install from [Open VSX](https://open-vsx.org/extension/dwenking/commit-file-tree).
+
 ## Where to find it
 
 After installing, open the **Source Control** sidebar (`Cmd/Ctrl+Shift+G`). The **COMMIT REVIEW TREE** section appears there, below the built-in Changes/Graph sections — it may start collapsed at the bottom, so click its header to expand, or drag the header upward to pin it where you like. Commit rows: click to expand the file tree, hover for the review-all and revert buttons, right-click for copy/revert actions.
