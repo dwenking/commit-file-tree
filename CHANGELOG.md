@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.4.6
+- The tree refreshes automatically when new commits land (watches the git dir, worktree-safe, debounced).
+
 ## 0.4.5
 - Export no longer drops a file note when the reviewed mark was set in a different view (commit vs. combined); notes from multiple views are all included.
 

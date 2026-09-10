@@ -1130,6 +1130,34 @@ function activate(context) {
   provider.view = view;
   view.description = 'by commits';
 
+  // Auto-refresh on new commits: watch the resolved git dir (worktree-safe —
+  // .git may be a file pointing elsewhere). HEAD/index/refs change on every
+  // commit, checkout, and branch update; debounce a burst into one refresh.
+  (async () => {
+    const root = provider.repoRoot;
+    if (!root) return;
+    let gitDir;
+    try {
+      gitDir = (await git(root, ['rev-parse', '--absolute-git-dir'])).trim();
+    } catch (e) {
+      return; // not a git repo
+    }
+    let timer;
+    const trigger = () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => provider.refresh(), 500);
+    };
+    const watchers = [];
+    for (const target of [gitDir, path.join(gitDir, 'refs', 'heads')]) {
+      try {
+        watchers.push(fs.watch(target, trigger));
+      } catch (e) {
+        // directory may not exist (e.g. packed refs only) — the gitDir watch still covers HEAD/index
+      }
+    }
+    context.subscriptions.push({ dispose: () => watchers.forEach((w) => w.close()) });
+  })();
+
   let backMode;
   function setBack(mode) {
     backMode = mode;
