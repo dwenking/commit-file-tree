@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.4.7
+- Store page: removed the hero screenshot.
+
 ## 0.4.6
 - The tree refreshes automatically when new commits land (watches the git dir, worktree-safe, debounced).
 

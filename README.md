@@ -4,8 +4,6 @@
 
 When a coding agent works in your repo, it leaves behind a pile of local commits: intermediate fixes, broad file churn, and the occasional change you never asked for. This extension turns that pile into a reviewable unit — your unpushed work, presented as clear file trees with review tooling attached — so you can inspect, annotate, and feed the results straight back to the agent.
 
-![All unpushed changes as one tree, reviewed in a single multi-diff tab](images/combined-all-changes.png)
-
 ## Install
 
 - **VS Code**: [Marketplace](https://marketplace.visualstudio.com/items?itemName=dwenking.commit-file-tree), or `ext install dwenking.commit-file-tree` from the command palette.
