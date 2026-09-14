@@ -524,9 +524,20 @@ class CommitTreeProvider {
     try {
       base = (await git(root, ['rev-parse', '@{upstream}'])).trim();
     } catch (e) {
+      // No upstream: match the Graph's notion of "ahead" — commits not on any
+      // remote. The first-parent boundary is the nearest pushed ancestor.
+      try {
+        const out = await git(root, ['rev-list', '--first-parent', '--boundary', 'HEAD', '--not', '--remotes']);
+        const lines = out.trim().split('\n').filter(Boolean);
+        const boundary = lines.find((l) => l.startsWith('-'));
+        if (boundary) base = boundary.slice(1);
+        else if (!lines.length) base = target; // HEAD itself is on a remote: all pushed
+      } catch (e2) {
+        // fall through to the local-branch heuristics below
+      }
       const branch = (await git(root, ['rev-parse', '--abbrev-ref', 'HEAD'])).trim();
       for (const main of ['main', 'master']) {
-        if (main === branch) continue;
+        if (base || main === branch) continue;
         try {
           const mb = (await git(root, ['merge-base', main, 'HEAD'])).trim();
           if (mb !== target) {
@@ -670,30 +681,29 @@ class CommitTreeProvider {
   async getCommits(root) {
     const FORMAT = '--format=%H%x09%h%x09%an%x09%ar%x09%s';
     // Local (unpushed) commits are the focus; remote history is behind "Show pushed history".
+    // The base comes from getUnpushedRange so all views agree on what "unpushed" means.
+    const ctx = await this.getUnpushedRange(root);
+    const hasBase = ctx.base !== CommitTreeProvider.EMPTY_TREE;
     let local = [];
-    let hasUpstream = true;
-    try {
-      local = parseLog(await git(root, ['log', '@{upstream}..HEAD', '--shortstat', FORMAT]));
-    } catch (e) {
-      hasUpstream = false; // no upstream configured — fall back to plain history
+    if (hasBase) {
+      local = parseLog(await git(root, ['log', `${ctx.base}..HEAD`, '--shortstat', FORMAT]));
     }
     let history = [];
-    const historyLimit = hasUpstream ? this.extra : this.extra + 50;
+    const historyLimit = hasBase ? this.extra : this.extra + 50;
     if (historyLimit > 0) {
-      const base = hasUpstream ? '@{upstream}' : 'HEAD';
-      history = parseLog(await git(root, ['log', `-${historyLimit}`, base, '--shortstat', FORMAT]));
+      history = parseLog(await git(root, ['log', `-${historyLimit}`, hasBase ? ctx.base : 'HEAD', '--shortstat', FORMAT]));
     }
     const items = [
       ...local.map((c) => this.commitItem(c, true)),
       ...history.map((c) => this.commitItem(c, false)),
     ];
-    if (hasUpstream && local.length === 0 && this.extra === 0) {
+    if (hasBase && local.length === 0 && this.extra === 0) {
       items.unshift(this.allPushedItem());
     }
     if (historyLimit === 0 || history.length === historyLimit) {
       const more = new vscode.TreeItem('Show pushed history…', vscode.TreeItemCollapsibleState.None);
       more.iconPath = new vscode.ThemeIcon('cloud');
-      more.description = hasUpstream ? 'commits already on the remote' : 'older commits';
+      more.description = hasBase ? 'commits already on the remote' : 'older commits';
       more.command = { command: 'commitFileTree.loadMore', title: 'Show Pushed History' };
       items.push(more);
     }

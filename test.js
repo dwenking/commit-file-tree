@@ -159,6 +159,20 @@ const cp = require('child_process');
   items = await provider.getDeps(repo);
   assert.deepStrictEqual(items.map(lbl), ['f2.js', 'Standalone files (1)']);
 
+  // No upstream but remote refs exist (e.g. an unpushed worktree branch):
+  // "unpushed" must match the Graph — commits not on any remote — not
+  // everything since main diverged.
+  sh('git update-ref refs/remotes/origin/other HEAD~1');
+  const ctx = await provider.getUnpushedRange(repo);
+  assert.strictEqual(ctx.base, sh('git rev-parse HEAD~1').toString().trim());
+  items = await provider.getCommits(repo);
+  assert.deepStrictEqual(items.map(lbl), ['c5', 'Show pushed history…']);
+
+  // HEAD fully reachable from a remote → everything is pushed
+  sh('git update-ref refs/remotes/origin/other HEAD');
+  items = await provider.getCommits(repo);
+  assert.strictEqual(lbl(items[0]), 'No unpushed commits');
+
   fs.rmSync(repo, { recursive: true, force: true });
   console.log('ok');
 })();

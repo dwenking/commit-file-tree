@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.4.8
+- Fixed: on a branch with no configured upstream (e.g. a worktree branch never pushed), the extension counted everything since `main` as unpushed. It now matches the Graph: unpushed = commits not on any remote.
+
 ## 0.4.7
 - Store page: removed the hero screenshot.
 
