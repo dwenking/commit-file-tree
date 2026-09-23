@@ -394,3 +394,26 @@ const mdNoteOutside = buildSummaryMd({
 });
 assert.ok(mdNoteOutside.includes('### src/config.ts (working copy · file note)'), 'note-outside heading missing');
 assert.ok(mdNoteOutside.includes('update this config too'));
+
+// Controller watchdog: Cursor's idle ext-host restart silently drops our
+// comment controller on the main thread. A poke that is never answered by a
+// provideCommentingRanges call means the controller is gone → recreate once.
+const { controllerWatchdog } = require('./extension.js');
+(async () => {
+  const tick = (ms) => new Promise((r) => setTimeout(r, ms));
+  let recreated = 0;
+  const wd = controllerWatchdog(() => recreated++, { timeoutMs: 20, cooldownMs: 1000 });
+  // healthy: poke answered → no recreate
+  wd.poked();
+  wd.provided();
+  await tick(40);
+  assert.strictEqual(recreated, 0, 'answered poke must not recreate');
+  // dead: poke unanswered → recreate
+  wd.poked();
+  await tick(40);
+  assert.strictEqual(recreated, 1, 'unanswered poke must recreate');
+  // still dead within cooldown → do not thrash
+  wd.poked();
+  await tick(40);
+  assert.strictEqual(recreated, 1, 'cooldown must suppress a second recreate');
+})();

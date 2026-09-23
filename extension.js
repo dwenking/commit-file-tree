@@ -843,6 +843,36 @@ function commentRangeFor(documentUri, editors, root) {
   return [new vscode.Range(start, 0, end, 0)];
 }
 
+// Cursor kills its builtin extension hosts after ~30 idle minutes and restarts
+// them on the next focus/activity. Each restarted host constructs a new
+// MainThreadComments, whose constructor calls unregisterCommentController()
+// with no argument — clearing *every* comment controller on the main thread,
+// including ours, while our extension host keeps running. From then on VS Code
+// never asks us for commenting ranges and the "+" gutter is gone until reload.
+// A poke (reassigning commentingRangeProvider) that is not answered by a
+// provideCommentingRanges call within timeoutMs means we were dropped → the
+// caller re-registers the controller. cooldownMs bounds thrash if a poke is
+// ever unanswered for another reason (e.g. commenting disabled).
+function controllerWatchdog(recreate, { timeoutMs = 1500, cooldownMs = 30000 } = {}) {
+  let lastProvide = 0;
+  let lastRecreate = 0;
+  let timer;
+  return {
+    provided() {
+      lastProvide = Date.now();
+    },
+    poked() {
+      const at = Date.now();
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        if (lastProvide >= at || Date.now() - lastRecreate < cooldownMs) return;
+        lastRecreate = Date.now();
+        recreate();
+      }, timeoutMs);
+    },
+  };
+}
+
 function changeResources(root, files, ctx) {
   return files.map((f) => [
     vscode.Uri.file(path.join(root, f.path)),
@@ -900,14 +930,14 @@ function activate(context) {
   }
 
   // --- Line comments (native Comments API) ---
-  const controller = vscode.comments.createCommentController('commitFileTree', 'Commit Review Tree');
+  let controller; // (re)created by createController — see controllerWatchdog
   // Only offer the "+" gutter on the cursor's line, not on every hovered line.
   const rangeProvider = {
     provideCommentingRanges(document) {
+      watchdog.provided();
       return commentRangeFor(document.uri, vscode.window.visibleTextEditors, provider.repoRoot);
     },
   };
-  controller.commentingRangeProvider = rangeProvider;
   const liveThreads = new Map(); // "<ref>:<rel>:<line>" -> CommentThread
 
   function commentBody(text) {
@@ -963,7 +993,15 @@ function activate(context) {
       liveThreads.set(threadKey, thread);
     }
   }
-  vscode.workspace.textDocuments.forEach(restoreThreads);
+  function createController() {
+    if (controller) controller.dispose(); // also disposes its threads
+    liveThreads.clear();
+    controller = vscode.comments.createCommentController('commitFileTree', 'Commit Review Tree');
+    controller.commentingRangeProvider = rangeProvider;
+    vscode.workspace.textDocuments.forEach(restoreThreads);
+  }
+  const watchdog = controllerWatchdog(createController);
+  createController();
   let lastCommentLine;
   // Focus returning from the comment widget re-queries ranges so the "+" recovers.
   const focusListener = vscode.window.onDidChangeActiveTextEditor((ed) => {
@@ -974,11 +1012,13 @@ function activate(context) {
   const selectionListener = vscode.window.onDidChangeTextEditorSelection((e) => {
     if (!locOf(e.textEditor.document.uri, provider.repoRoot)) return;
     const sel = e.textEditor.selection;
-    const span = `${sel.start.line}-${sel.end.line}`;
+    // keyed by document too: the two sides of a diff share line numbers
+    const span = `${e.textEditor.document.uri}:${sel.start.line}-${sel.end.line}`;
     if (span === lastCommentLine) return; // typing within the same span: no redraw, no flicker
     lastCommentLine = span;
     // ponytail: reassigning the provider pokes VS Code into re-querying ranges
     controller.commentingRangeProvider = rangeProvider;
+    watchdog.poked();
   });
 
   function updateArchiveContext() {
@@ -1204,7 +1244,7 @@ function activate(context) {
 
   context.subscriptions.push(
     view,
-    controller,
+    { dispose: () => controller.dispose() },
     selectionListener,
     focusListener,
     vscode.workspace.onDidOpenTextDocument(restoreThreads),
@@ -1290,5 +1330,6 @@ module.exports = {
   buildSummaryMd,
   aggStatus,
   commentRangeFor,
+  controllerWatchdog,
   CommitTreeProvider,
 };
