@@ -315,6 +315,27 @@ function buildSummaryMd(data) {
   return lines.join('\n') + '\n';
 }
 
+// Write the review summary to a repo-relative path for the agent to read, and
+// keep it out of git via .git/info/exclude (local, worktree-safe, never touches
+// the user's .gitignore). Returns the absolute path written.
+async function writeReviewFile(root, relPath, md) {
+  const abs = path.join(root, relPath);
+  await fs.promises.mkdir(path.dirname(abs), { recursive: true });
+  await fs.promises.writeFile(abs, md);
+  const excludeFile = path.resolve(root, (await git(root, ['rev-parse', '--git-path', 'info/exclude'])).trim());
+  const rule = '/' + relPath.split(path.sep).join('/');
+  let existing = '';
+  try {
+    existing = await fs.promises.readFile(excludeFile, 'utf8');
+  } catch (e) {
+    await fs.promises.mkdir(path.dirname(excludeFile), { recursive: true });
+  }
+  if (!existing.split('\n').includes(rule)) {
+    await fs.promises.appendFile(excludeFile, (existing && !existing.endsWith('\n') ? '\n' : '') + rule + '\n');
+  }
+  return abs;
+}
+
 // URI the built-in git extension's content provider understands.
 function gitUri(repoRoot, filePath, ref) {
   const abs = path.join(repoRoot, filePath);
@@ -1167,10 +1188,24 @@ function activate(context) {
     }
     const md = buildSummaryMd(data);
     await vscode.env.clipboard.writeText(md);
-    const doc = await vscode.workspace.openTextDocument({ content: md, language: 'markdown' });
-    await vscode.window.showTextDocument(doc);
+    // Also write it where the agent can read it (empty setting = clipboard only).
+    const exportPath = vscode.workspace.getConfiguration('commitFileTree').get('exportPath', '').trim();
+    let where = 'copied to clipboard';
+    if (exportPath) {
+      try {
+        const abs = await writeReviewFile(root, exportPath, md);
+        await vscode.window.showTextDocument(await vscode.workspace.openTextDocument(abs), { preview: false });
+        where = `copied to clipboard and written to ${exportPath}`;
+      } catch (e) {
+        vscode.window.showErrorMessage(`Commit Review Tree: could not write ${exportPath}: ${e.message}`);
+      }
+    }
+    if (where === 'copied to clipboard') {
+      const doc = await vscode.workspace.openTextDocument({ content: md, language: 'markdown' });
+      await vscode.window.showTextDocument(doc);
+    }
     if (!archiveAfter) {
-      vscode.window.showInformationMessage('Review summary copied to clipboard.');
+      vscode.window.showInformationMessage(`Review summary ${where}.`);
       return;
     }
     // Export ends the round: archive delivered feedback so the next round starts clean.
@@ -1179,7 +1214,7 @@ function activate(context) {
     liveThreads.clear();
     updateArchiveContext();
     const pick = await vscode.window.showInformationMessage(
-      `Review summary copied — archived ${counts.comments} comment(s) and ${counts.notes} note(s) for the next round.`,
+      `Review summary ${where} — archived ${counts.comments} comment(s) and ${counts.notes} note(s) for the next round.`,
       'Undo Archive'
     );
     if (pick === 'Undo Archive') await restoreLastRound();
@@ -1368,6 +1403,7 @@ module.exports = {
   resolveImport,
   buildEdges,
   buildSummaryMd,
+  writeReviewFile,
   aggStatus,
   commentRangeFor,
   controllerWatchdog,

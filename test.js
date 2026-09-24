@@ -433,3 +433,22 @@ const { controllerWatchdog } = require('./extension.js');
   await tick(40);
   assert.strictEqual(recreated, 1, 'cooldown must suppress a second recreate');
 })();
+
+// Export to file: writes the summary at a repo-relative path (creating dirs)
+// and hides it from git via .git/info/exclude, so it never shows up as an
+// untracked change in git status or in the Working tree node.
+const { writeReviewFile } = require('./extension.js');
+(async () => {
+  const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'cft-export-'));
+  const sh = (cmd) => cp.execSync(cmd, { cwd: repo, stdio: 'pipe' }).toString();
+  sh('git init -q -b main');
+  const abs = await writeReviewFile(repo, '.commit-review/latest.md', '# hi\n');
+  assert.strictEqual(abs, path.join(repo, '.commit-review/latest.md'));
+  assert.strictEqual(fs.readFileSync(abs, 'utf8'), '# hi\n');
+  assert.strictEqual(sh('git status --porcelain').trim(), '', 'export file must be git-excluded');
+  // second write: overwrite, and do not duplicate the exclude line
+  await writeReviewFile(repo, '.commit-review/latest.md', '# again\n');
+  const exclude = fs.readFileSync(path.join(repo, '.git/info/exclude'), 'utf8');
+  assert.strictEqual(exclude.split('\n').filter((l) => l === '/.commit-review/latest.md').length, 1);
+  fs.rmSync(repo, { recursive: true, force: true });
+})();

@@ -2,7 +2,7 @@
   "name": "commit-file-tree",
   "displayName": "Commit Review Tree",
   "description": "Review AI-generated commits like a PR: unpushed work as file trees (by commit, combined, or by dependencies), line comments, reviewed checkmarks, risk flags, and one-click export of feedback for your agent.",
-  "version": "0.4.10",
+  "version": "0.4.11",
   "publisher": "dwenking",
   "icon": "icon.png",
   "license": "MIT",
@@ -255,6 +255,16 @@
           "when": "false"
         }
       ]
+    },
+    "configuration": {
+      "title": "Commit Review Tree",
+      "properties": {
+        "commitFileTree.exportPath": {
+          "type": "string",
+          "default": ".commit-review/latest.md",
+          "markdownDescription": "Repo-relative path where *Export Review Summary* also writes the markdown, so your agent can read it (e.g. tell it: *read `.commit-review/latest.md` and fix everything listed*). The file is kept out of git via `.git/info/exclude`. Leave empty to copy to the clipboard only."
+        }
+      }
     }
   },
   "keywords": [

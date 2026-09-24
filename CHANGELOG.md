@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.4.11
+- New: Export Review Summary also writes the markdown to a file your agent can read (default `.commit-review/latest.md`, setting `commitFileTree.exportPath`; empty = clipboard only). The file is kept out of git via `.git/info/exclude`, so it never shows up as an untracked change.
+
 ## 0.4.10
 - New: a "Working tree" row above the unpushed commits shows uncommitted changes (staged, unstaged, untracked) as a file tree, diffed against HEAD. Line comments, notes, reviewed marks, and review-all work on it like on a commit. The tree refreshes on file changes, so agent edits show up before they are committed.
 
