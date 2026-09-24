@@ -452,3 +452,57 @@ const { writeReviewFile } = require('./extension.js');
   assert.strictEqual(exclude.split('\n').filter((l) => l === '/.commit-review/latest.md').length, 1);
   fs.rmSync(repo, { recursive: true, force: true });
 })();
+
+// Round tracking: an archived comment is "addressed" when the commented span
+// changed between its commit and HEAD (any hunk's old-side range overlaps it);
+// a file note is addressed when the file changed at all; working-copy comments
+// have no stable base → unknown (null).
+const { hunkOldRanges, lastRoundStatus } = require('./extension.js');
+assert.deepStrictEqual(hunkOldRanges('@@ -3,2 +3,4 @@\n-x\n+y\n@@ -10 +12 @@\n-a\n+b\n@@ -20,0 +23,2 @@\n+n\n'), [
+  [3, 4],
+  [10, 10],
+  [20, 21],
+]);
+(async () => {
+  const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'cft-round-'));
+  const sh = (cmd) => cp.execSync(cmd, { cwd: repo, stdio: 'pipe' }).toString().trim();
+  sh('git init -q -b main && git config user.email t@t && git config user.name t');
+  fs.writeFileSync(path.join(repo, 'a.js'), 'l1\nl2\nl3\nl4\nl5\n');
+  fs.writeFileSync(path.join(repo, 'b.js'), 'same\n');
+  fs.writeFileSync(path.join(repo, 'c.js'), 'untouched\n');
+  sh('git add . && git commit -qm c1');
+  const c1 = sh('git rev-parse HEAD');
+  // agent's "fix": rewrite line 2 of a.js, touch b.js
+  fs.writeFileSync(path.join(repo, 'a.js'), 'l1\nL2 fixed\nl3\nl4\nl5\n');
+  fs.writeFileSync(path.join(repo, 'b.js'), 'changed\n');
+  sh('git add . && git commit -qm c2');
+  const round = {
+    comments: {
+      [`${c1}:a.js`]: [
+        { line: 2, text: 'rename this' },
+        { line: 4, endLine: 5, text: 'still wrong' },
+      ],
+      'working:a.js': [{ line: 1, text: 'no base' }],
+    },
+    notes: { [`${c1}:b.js`]: 'rewrite file', [`${c1}:c.js`]: 'delete file' },
+  };
+  const status = await lastRoundStatus(repo, round);
+  assert.deepStrictEqual(
+    status.map((s) => [s.path, s.line, s.addressed]),
+    [
+      ['a.js', 2, true],
+      ['a.js', 4, false],
+      ['a.js', 1, null],
+      ['b.js', undefined, true],
+      ['c.js', undefined, false],
+    ]
+  );
+  // The export renders the previous round as a checklist above the new action items.
+  const mdPrev = buildSummaryMd({ rangeLabel: 'r', files: [], previous: status });
+  assert.ok(mdPrev.indexOf('## Previous round') < mdPrev.indexOf('_No notes or comments._'));
+  assert.ok(mdPrev.includes('- [x] a.js:2 — rename this'));
+  assert.ok(mdPrev.includes('- [ ] a.js:4-5 — still wrong'));
+  assert.ok(mdPrev.includes('- [?] a.js:1 — no base'));
+  assert.ok(mdPrev.includes('- [x] b.js — rewrite file'));
+  fs.rmSync(repo, { recursive: true, force: true });
+})();

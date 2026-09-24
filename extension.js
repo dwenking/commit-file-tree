@@ -286,6 +286,16 @@ function quoteLines(content, line, endLine) {
 // data: {rangeLabel, files: [{path, status, risks, reviewed, note, comments: [{line, text, code}]}]}
 function buildSummaryMd(data) {
   const lines = [`# Code review feedback (${data.rangeLabel})`, ''];
+  // Checklist of the last round: [x] changed since, [ ] untouched, [?] unknown.
+  if (data.previous && data.previous.length) {
+    lines.push('## Previous round', '');
+    for (const p of data.previous) {
+      const box = p.addressed === null ? '[?]' : p.addressed ? '[x]' : '[ ]';
+      const loc = p.line ? `:${p.line}${p.endLine ? '-' + p.endLine : ''}` : '';
+      lines.push(`- ${box} ${p.path}${loc} — ${p.text.split('\n')[0]}`);
+    }
+    lines.push('');
+  }
   const withFeedback = data.files.filter((f) => f.note || (f.comments && f.comments.length));
   if (withFeedback.length) {
     lines.push('## Action items', '');
@@ -313,6 +323,46 @@ function buildSummaryMd(data) {
     }
   }
   return lines.join('\n') + '\n';
+}
+
+// Old-side line ranges of every hunk in a unified diff: "@@ -a,b +c,d @@" →
+// [a, a+b-1]; b omitted = 1 line; b = 0 (pure insertion) touches a and a+1.
+function hunkOldRanges(diff) {
+  const ranges = [];
+  for (const m of diff.matchAll(/^@@ -(\d+)(?:,(\d+))? /gm)) {
+    const a = Number(m[1]);
+    const b = m[2] === undefined ? 1 : Number(m[2]);
+    ranges.push(b === 0 ? [a, a + 1] : [a, a + b - 1]);
+  }
+  return ranges;
+}
+
+// For each comment/note of an archived round: did the agent touch it since?
+// addressed: true (span/file changed between its commit and HEAD), false
+// (unchanged), null (no stable base, e.g. working-copy comments).
+async function lastRoundStatus(root, round) {
+  const items = [];
+  const split = (key) => [key.slice(0, key.indexOf(':')), key.slice(key.indexOf(':') + 1)];
+  const diffFor = async (ref, rel) => {
+    if (ref === 'working') return null;
+    return git(root, ['diff', '-U0', ref, 'HEAD', '--', rel]).catch(() => null);
+  };
+  for (const [key, list] of Object.entries(round.comments || {})) {
+    const [ref, rel] = split(key);
+    const diff = await diffFor(ref, rel);
+    const ranges = diff === null ? null : hunkOldRanges(diff);
+    for (const c of list) {
+      const end = c.endLine || c.line;
+      const addressed = ranges === null ? null : ranges.some(([s, e]) => s <= end && e >= c.line);
+      items.push({ path: rel, line: c.line, endLine: c.endLine, text: c.text, addressed });
+    }
+  }
+  for (const [key, text] of Object.entries(round.notes || {})) {
+    const [ref, rel] = split(key);
+    const diff = await diffFor(ref, rel);
+    items.push({ path: rel, text, addressed: diff === null ? null : diff.trim().length > 0 });
+  }
+  return items;
 }
 
 // Write the review summary to a repo-relative path for the agent to read, and
@@ -1086,19 +1136,10 @@ function activate(context) {
   async function exportSummary() {
     const root = provider.repoRoot;
     if (!root) return;
-    const activeComments = Object.values(provider.comments()).reduce((n, l) => n + l.length, 0);
-    const activeNotes = Object.keys(provider.notes()).length;
-    let archiveAfter = false;
-    if (activeComments || activeNotes) {
-      const pick = await vscode.window.showWarningMessage(
-        `Export review summary?\n\n"Export & Archive" also archives ${activeComments} comment(s) and ${activeNotes} note(s) to start the next round (undoable).`,
-        { modal: true },
-        'Export & Archive',
-        'Export Only'
-      );
-      if (!pick) return;
-      archiveAfter = pick === 'Export & Archive';
-    }
+    // Export ends the round. No confirmation: the round is kept as a timestamped
+    // file and in the archive (restorable), so nothing is lost.
+    const archiveAfter =
+      Object.values(provider.comments()).some((l) => l.length) || Object.keys(provider.notes()).length > 0;
     let ctx;
     try {
       ctx = await provider.getUnpushedRange(root);
@@ -1186,6 +1227,8 @@ function activate(context) {
         });
       }
     }
+    const rounds = provider.state.get('cft.archive.rounds', []);
+    if (rounds.length) data.previous = await lastRoundStatus(root, rounds[rounds.length - 1]);
     const md = buildSummaryMd(data);
     await vscode.env.clipboard.writeText(md);
     // Also write it where the agent can read it (empty setting = clipboard only).
@@ -1210,6 +1253,15 @@ function activate(context) {
     }
     // Export ends the round: archive delivered feedback so the next round starts clean.
     const counts = await provider.archiveReviewData();
+    // Keep a timestamped copy beside the latest file (e.g. .commit-review/2026-09-24_1608.md),
+    // so the history of what was asked stays readable and sorts by time.
+    if (exportPath) {
+      const d = new Date();
+      const pad = (n) => String(n).padStart(2, '0');
+      const stamp = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}`;
+      const stamped = path.posix.join(path.posix.dirname(exportPath), `${stamp}${path.extname(exportPath)}`);
+      await writeReviewFile(root, stamped, md).catch(() => {});
+    }
     liveThreads.forEach((t) => t.dispose());
     liveThreads.clear();
     updateArchiveContext();
@@ -1218,6 +1270,20 @@ function activate(context) {
       'Undo Archive'
     );
     if (pick === 'Undo Archive') await restoreLastRound();
+  }
+
+  // Mid-round check: which of the last round's items has the agent touched so far?
+  async function checkLastRound() {
+    const root = provider.repoRoot;
+    const rounds = provider.state.get('cft.archive.rounds', []);
+    if (!root || !rounds.length) {
+      vscode.window.showInformationMessage('Commit Review Tree: no archived round to check.');
+      return;
+    }
+    const previous = await lastRoundStatus(root, rounds[rounds.length - 1]);
+    const md = buildSummaryMd({ rangeLabel: `round ${rounds.length} vs HEAD`, files: [], previous });
+    const doc = await vscode.workspace.openTextDocument({ content: md, language: 'markdown' });
+    await vscode.window.showTextDocument(doc);
   }
 
   async function restoreLastRound() {
@@ -1326,6 +1392,7 @@ function activate(context) {
     vscode.commands.registerCommand('commitFileTree.addComment', saveComment),
     vscode.commands.registerCommand('commitFileTree.deleteThread', deleteThread),
     vscode.commands.registerCommand('commitFileTree.exportSummary', exportSummary),
+    vscode.commands.registerCommand('commitFileTree.checkLastRound', checkLastRound),
     vscode.commands.registerCommand('commitFileTree.clearReviewData', clearReviewData),
     vscode.commands.registerCommand('commitFileTree.restoreLastRound', restoreLastRound),
     vscode.commands.registerCommand('commitFileTree.revealInDeps', revealInDeps),
@@ -1404,6 +1471,8 @@ module.exports = {
   buildEdges,
   buildSummaryMd,
   writeReviewFile,
+  hunkOldRanges,
+  lastRoundStatus,
   aggStatus,
   commentRangeFor,
   controllerWatchdog,

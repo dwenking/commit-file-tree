@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.12
+- New: round tracking. The export opens with a "Previous round" checklist: `[x]` the commented span (or noted file) changed since that round's commit, `[ ]` untouched, `[?]` no stable base (working-copy comments). Check mid-round anytime with "Commit Review Tree: Check Last Round" in the command palette.
+- Export always archives the delivered comments and notes now (no more "Export & Archive / Export Only" dialog); each round is kept as a timestamped file next to the latest one (`.commit-review/2026-09-24_1608.md`), git-excluded like the latest file. Undo Archive and Restore Last Archived Round are unchanged.
+
 ## 0.4.11
 - New: Export Review Summary also writes the markdown to a file your agent can read (default `.commit-review/latest.md`, setting `commitFileTree.exportPath`; empty = clipboard only). The file is kept out of git via `.git/info/exclude`, so it never shows up as an untracked change.
 
