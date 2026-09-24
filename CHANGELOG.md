@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.4.10
+- New: a "Working tree" row above the unpushed commits shows uncommitted changes (staged, unstaged, untracked) as a file tree, diffed against HEAD. Line comments, notes, reviewed marks, and review-all work on it like on a commit. The tree refreshes on file changes, so agent edits show up before they are committed.
+
 ## 0.4.9
 - Fixed: in Cursor, the comment "+" (and saved threads) vanished after the window sat idle for ~30 minutes and did not come back until reload. Cursor restarts its builtin extension hosts after idle, which drops every comment controller on the main thread; the extension now detects the dropped controller and re-registers it.
 - Comment "+" refresh is keyed per document, so the two sides of a diff no longer suppress each other on equal line numbers.

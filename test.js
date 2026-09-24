@@ -99,6 +99,23 @@ const cp = require('child_process');
   // commit rows show only the author; stats live in the hover
   assert.strictEqual(items[0].description, 't');
 
+  // Uncommitted work shows as a "Working tree" node above the commits:
+  // tracked edits diff against HEAD, untracked files count as added.
+  Object.defineProperty(provider, 'repoRoot', { value: repo });
+  fs.writeFileSync(path.join(repo, 'f1'), '1 edited');
+  fs.writeFileSync(path.join(repo, 'f9'), 'new');
+  items = await provider.getCommits(repo);
+  assert.deepStrictEqual(items.map(lbl), ['Working tree', 'c3', 'c2', 'Show pushed history…']);
+  assert.strictEqual(items[0].contextValue, 'worktree');
+  const wt = await provider.getChildren(items[0]);
+  assert.deepStrictEqual(wt.map(lbl), ['f1', 'f9']);
+  assert.strictEqual(wt[0].command.arguments[1], 'M');
+  assert.strictEqual(wt[1].command.arguments[1], 'A');
+  assert.deepStrictEqual(wt[0].command.arguments[2], { base: 'HEAD', target: 'working', keyRef: 'working' });
+  sh('git checkout -q -- f1 && rm f9');
+  items = await provider.getCommits(repo);
+  assert.strictEqual(lbl(items[0]), 'c3'); // clean tree: no node
+
   provider.loadMore();
   items = await provider.getCommits(repo);
   // history exhausted (1 < 50): no "show more", but a way back
@@ -109,7 +126,6 @@ const cp = require('child_process');
   assert.deepStrictEqual(items.map(lbl), ['c3', 'c2', 'Show pushed history…']);
 
   // Combined mode: one tree for everything unpushed (f2.js, f3.js from c2/c3)
-  Object.defineProperty(provider, 'repoRoot', { value: repo });
   provider.setMode('combined');
   items = await provider.getCombined(repo);
   assert.deepStrictEqual(items.map((i) => i.label).sort(), ['f2.js', 'f3.js']);

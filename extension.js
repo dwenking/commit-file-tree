@@ -487,6 +487,9 @@ class CommitTreeProvider {
         const ctx = { base: `${element.sha}~1`, target: element.sha, keyRef: element.sha };
         return this.getTreeNodes(buildTree(parseNameStatus(out)), ctx);
       }
+      if (element.contextValue === 'worktree') {
+        return this.getTreeNodes(buildTree(await this.workingTreeFiles(root)), CommitTreeProvider.WORKING_CTX);
+      }
       if (element.contextValue === 'dir') {
         return this.getTreeNodes(element.node, element.ctx);
       }
@@ -515,6 +518,19 @@ class CommitTreeProvider {
 
   // git's well-known empty tree: lets local-only repos diff their entire history
   static EMPTY_TREE = '4b825dc642cb6eb9a060e54bf8d69288fbee4904';
+  // Uncommitted changes: base is HEAD, the "target" is the working copy on disk.
+  static WORKING_CTX = { base: 'HEAD', target: 'working', keyRef: 'working' };
+
+  // Tracked edits (staged + unstaged) vs HEAD, plus untracked files as added.
+  async workingTreeFiles(root) {
+    const [diff, untracked] = await Promise.all([
+      git(root, ['diff', 'HEAD', '--name-status', '-M']),
+      git(root, ['ls-files', '--others', '--exclude-standard']),
+    ]);
+    const files = parseNameStatus(diff);
+    for (const p of untracked.split('\n').filter(Boolean)) files.push({ status: 'A', path: p });
+    return files;
+  }
 
   // Base for "what am I reviewing": upstream if set, else merge-base with a
   // local main branch, else the empty tree (whole repo counts as new work).
@@ -697,6 +713,15 @@ class CommitTreeProvider {
       ...local.map((c) => this.commitItem(c, true)),
       ...history.map((c) => this.commitItem(c, false)),
     ];
+    const dirty = await this.workingTreeFiles(root);
+    if (dirty.length) {
+      const wt = new vscode.TreeItem('Working tree', vscode.TreeItemCollapsibleState.Collapsed);
+      wt.contextValue = 'worktree';
+      wt.description = `${dirty.length} uncommitted`;
+      wt.iconPath = new vscode.ThemeIcon('edit', new vscode.ThemeColor('charts.yellow'));
+      wt.tooltip = 'Uncommitted changes (staged, unstaged, untracked) vs HEAD';
+      items.unshift(wt);
+    }
     if (hasBase && local.length === 0 && this.extra === 0) {
       items.unshift(this.allPushedItem());
     }
@@ -873,11 +898,16 @@ function controllerWatchdog(recreate, { timeoutMs = 1500, cooldownMs = 30000 } =
   };
 }
 
+// The "target" side of a change: a git revision, or the file on disk for the working tree.
+function targetUri(root, filePath, ctx) {
+  return ctx.target === 'working' ? vscode.Uri.file(path.join(root, filePath)) : gitUri(root, filePath, ctx.target);
+}
+
 function changeResources(root, files, ctx) {
   return files.map((f) => [
     vscode.Uri.file(path.join(root, f.path)),
     f.status === 'A' ? undefined : gitUri(root, f.oldPath || f.path, ctx.base),
-    f.status === 'D' ? undefined : gitUri(root, f.path, ctx.target),
+    f.status === 'D' ? undefined : targetUri(root, f.path, ctx),
   ]);
 }
 
@@ -894,6 +924,10 @@ function activate(context) {
         ctx = { base: `${item.sha}~1`, target: item.sha };
         files = parseNameStatus(await git(root, ['show', '--format=', '--name-status', item.sha]));
         title = `Review ${item.sha.slice(0, 7)}: ${item.subject}`;
+      } else if (item && item.contextValue === 'worktree') {
+        ctx = CommitTreeProvider.WORKING_CTX;
+        files = await provider.workingTreeFiles(root);
+        title = 'Review working tree';
       } else {
         ctx = await provider.getUnpushedRange(root);
         files = parseNameStatus(await git(root, ['diff', '--name-status', ctx.base, ctx.target]));
@@ -1206,6 +1240,12 @@ function activate(context) {
       }
     }
     context.subscriptions.push({ dispose: () => watchers.forEach((w) => w.close()) });
+    // Unstaged edits never touch the git dir; the working-tree node needs the workspace watcher.
+    const ws = vscode.workspace.createFileSystemWatcher('**');
+    ws.onDidChange(trigger);
+    ws.onDidCreate(trigger);
+    ws.onDidDelete(trigger);
+    context.subscriptions.push(ws);
   })();
 
   let backMode;
@@ -1300,7 +1340,7 @@ function activate(context) {
       const title = `${path.basename(filePath)} (${ctx.target.slice(0, 7)})`;
       // Added: no base-side version (may even be a root commit) — open the new content.
       if (status === 'A') {
-        return vscode.commands.executeCommand('vscode.open', gitUri(root, filePath, ctx.target));
+        return vscode.commands.executeCommand('vscode.open', targetUri(root, filePath, ctx));
       }
       // Deleted: no version at target — open the old content.
       if (status === 'D') {
@@ -1308,7 +1348,7 @@ function activate(context) {
       }
       // Renames/copies: the base side lives at the old path.
       const left = gitUri(root, oldPath || filePath, ctx.base);
-      const right = gitUri(root, filePath, ctx.target);
+      const right = targetUri(root, filePath, ctx);
       return vscode.commands.executeCommand('vscode.diff', left, right, title);
     })
   );

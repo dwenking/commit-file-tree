@@ -17,6 +17,7 @@ After installing, open the **Source Control** sidebar (`Cmd/Ctrl+Shift+G`). The 
 
 ### See what the agent actually did
 - **Unpushed work first** — the list shows only local commits not yet on the remote (`@{upstream}..HEAD`), each with a `+adds −deletes` tag. Remote history stays out of the way behind "Show pushed history…".
+- **Working tree** — uncommitted changes (staged, unstaged, untracked) appear as a row above the commits, diffed against HEAD, so agent edits are reviewable before they are committed.
 - **Three view modes**, one click apart, with the active mode shown in the view header:
   - **By commits** — expand each commit into a real folder tree of its changes.
   - **Combined** — the *net* result of all unpushed commits as one tree. Ideal when the agent made ten intermediate commits and you only care about the final state.
