@@ -307,8 +307,6 @@ function buildSummaryMd(data) {
         lines.push(c.text, '');
       }
     }
-  } else {
-    lines.push('_No notes or comments._', '');
   }
   // Comments made on files/revisions outside the unpushed range still matter
   // (e.g. "this untouched file should change too") — never drop user input.
@@ -1183,7 +1181,8 @@ function activate(context) {
     const notes = provider.notes();
     const store = provider.comments();
     const data = {
-      rangeLabel: `${ctx.base.slice(0, 7)}..${ctx.target.slice(0, 7)}`,
+      rangeLabel:
+        ctx.base === ctx.target ? ctx.base.slice(0, 7) : `${ctx.base.slice(0, 7)}..${ctx.target.slice(0, 7)}`,
       files: await Promise.all(
         files.map(async (f) => {
           const comments = [];

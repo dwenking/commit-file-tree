@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.4.14
+- Export format: empty sections are left out instead of showing a "No notes or comments" placeholder, and the title shows a single SHA when there are no unpushed commits (was `abc1234..abc1234`).
+
 ## 0.4.13
 - Export no longer opens the summary in the editor; it copies to the clipboard and writes the file quietly. The toast has an "Open" button when you want to look at it.
 
