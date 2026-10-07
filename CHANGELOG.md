@@ -2,6 +2,7 @@
 
 ## 0.4.12
 - New: round tracking. The export opens with a "Previous round" checklist: `[x]` the commented span (or noted file) changed since that round's commit, `[ ]` untouched, `[?]` no stable base (working-copy comments). Check mid-round anytime with "Commit Review Tree: Check Last Round" in the command palette.
+- Fixed: the tree did not refresh after a push (the remote-tracking ref lives under `refs/remotes`, which was not watched; in a linked worktree it lives in the common git dir). The git-dir watch is now recursive and covers the common dir too.
 - Export always archives the delivered comments and notes now (no more "Export & Archive / Export Only" dialog); each round is kept as a timestamped file next to the latest one (`.commit-review/2026-09-24_1608.md`), git-excluded like the latest file. Undo Archive and Restore Last Archived Round are unchanged.
 
 ## 0.4.11

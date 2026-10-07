@@ -453,6 +453,33 @@ const { writeReviewFile } = require('./extension.js');
   fs.rmSync(repo, { recursive: true, force: true });
 })();
 
+// Auto-refresh must fire on remote-tracking ref updates (a push), including
+// from a linked worktree whose remote refs live in the common git dir.
+const { watchGitDirs } = require('./extension.js');
+(async () => {
+  const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'cft-watch-'));
+  const sh = (cmd, cwd = repo) => cp.execSync(cmd, { cwd, stdio: 'pipe' }).toString().trim();
+  sh('git init -q -b main && git config user.email t@t && git config user.name t');
+  fs.writeFileSync(path.join(repo, 'f'), '1');
+  sh('git add . && git commit -qm c1');
+  const wt = path.join(repo, 'wt');
+  sh(`git worktree add -q ${wt} -b side`);
+  const fired = (root, action) =>
+    new Promise(async (resolve) => {
+      const timer = setTimeout(() => resolve(false), 1500);
+      const w = await watchGitDirs(root, () => {
+        clearTimeout(timer);
+        w.close();
+        resolve(true);
+      });
+      await new Promise((r) => setTimeout(r, 100)); // let the watcher attach
+      action();
+    });
+  assert.ok(await fired(repo, () => sh('git update-ref refs/remotes/origin/main HEAD')), 'push (remote ref) in main checkout');
+  assert.ok(await fired(wt, () => sh('git update-ref refs/remotes/origin/side HEAD', wt)), 'push (remote ref) from a worktree');
+  fs.rmSync(repo, { recursive: true, force: true });
+})();
+
 // Round tracking: an archived comment is "addressed" when the commented span
 // changed between its commit and HEAD (any hunk's old-side range overlaps it);
 // a file note is addressed when the file changed at all; working-copy comments

@@ -982,6 +982,35 @@ function changeResources(root, files, ctx) {
   ]);
 }
 
+// Watch everything git writes on commit, checkout, fetch, and push: the
+// repo's git dir (HEAD, index, refs/heads) and, for a linked worktree, the
+// common dir where remote-tracking refs and packed-refs live. Recursive so a
+// push updating refs/remotes/origin/<branch> is seen. Returns {close}.
+async function watchGitDirs(root, onChange) {
+  const dirs = new Set();
+  for (const flag of ['--absolute-git-dir', '--git-common-dir']) {
+    try {
+      dirs.add(path.resolve(root, (await git(root, ['rev-parse', flag])).trim()));
+    } catch (e) {
+      // not a git repo
+    }
+  }
+  const watchers = [];
+  for (const dir of dirs) {
+    try {
+      watchers.push(fs.watch(dir, { recursive: true }, onChange));
+    } catch (e) {
+      // ponytail: no recursive watch on this platform → fall back to the old flat watch
+      try {
+        watchers.push(fs.watch(dir, onChange));
+      } catch (e2) {
+        // dir vanished between rev-parse and watch
+      }
+    }
+  }
+  return { close: () => watchers.forEach((w) => w.close()) };
+}
+
 function activate(context) {
   const provider = new CommitTreeProvider(context.workspaceState);
   vscode.commands.executeCommand('setContext', 'commitFileTree.mode', 'commits');
@@ -1315,32 +1344,17 @@ function activate(context) {
   provider.view = view;
   view.description = 'by commits';
 
-  // Auto-refresh on new commits: watch the resolved git dir (worktree-safe —
-  // .git may be a file pointing elsewhere). HEAD/index/refs change on every
-  // commit, checkout, and branch update; debounce a burst into one refresh.
+  // Auto-refresh on commit, checkout, fetch, and push; debounce a burst into one refresh.
   (async () => {
     const root = provider.repoRoot;
     if (!root) return;
-    let gitDir;
-    try {
-      gitDir = (await git(root, ['rev-parse', '--absolute-git-dir'])).trim();
-    } catch (e) {
-      return; // not a git repo
-    }
     let timer;
     const trigger = () => {
       clearTimeout(timer);
       timer = setTimeout(() => provider.refresh(), 500);
     };
-    const watchers = [];
-    for (const target of [gitDir, path.join(gitDir, 'refs', 'heads')]) {
-      try {
-        watchers.push(fs.watch(target, trigger));
-      } catch (e) {
-        // directory may not exist (e.g. packed refs only) — the gitDir watch still covers HEAD/index
-      }
-    }
-    context.subscriptions.push({ dispose: () => watchers.forEach((w) => w.close()) });
+    const gitWatch = await watchGitDirs(root, trigger);
+    context.subscriptions.push({ dispose: () => gitWatch.close() });
     // Unstaged edits never touch the git dir; the working-tree node needs the workspace watcher.
     const ws = vscode.workspace.createFileSystemWatcher('**');
     ws.onDidChange(trigger);
@@ -1473,6 +1487,7 @@ module.exports = {
   writeReviewFile,
   hunkOldRanges,
   lastRoundStatus,
+  watchGitDirs,
   aggStatus,
   commentRangeFor,
   controllerWatchdog,
