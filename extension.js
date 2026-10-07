@@ -1263,21 +1263,20 @@ function activate(context) {
     // Also write it where the agent can read it (empty setting = clipboard only).
     const exportPath = vscode.workspace.getConfiguration('commitFileTree').get('exportPath', '').trim();
     let where = 'copied to clipboard';
+    let written; // absolute path of the file, when one was written
     if (exportPath) {
       try {
-        const abs = await writeReviewFile(root, exportPath, md);
-        await vscode.window.showTextDocument(await vscode.workspace.openTextDocument(abs), { preview: false });
+        written = await writeReviewFile(root, exportPath, md);
         where = `copied to clipboard and written to ${exportPath}`;
       } catch (e) {
         vscode.window.showErrorMessage(`Commit Review Tree: could not write ${exportPath}: ${e.message}`);
       }
     }
-    if (where === 'copied to clipboard') {
-      const doc = await vscode.workspace.openTextDocument({ content: md, language: 'markdown' });
-      await vscode.window.showTextDocument(doc);
-    }
+    // Nothing opens in the editor: the clipboard/file is the deliverable. "Open" is on the toast.
+    const actions = written ? ['Open'] : [];
     if (!archiveAfter) {
-      vscode.window.showInformationMessage(`Review summary ${where}.`);
+      const pick = await vscode.window.showInformationMessage(`Review summary ${where}.`, ...actions);
+      if (pick === 'Open') await vscode.window.showTextDocument(vscode.Uri.file(written), { preview: false });
       return;
     }
     // Export ends the round: archive delivered feedback so the next round starts clean.
@@ -1296,9 +1295,11 @@ function activate(context) {
     updateArchiveContext();
     const pick = await vscode.window.showInformationMessage(
       `Review summary ${where} — archived ${counts.comments} comment(s) and ${counts.notes} note(s) for the next round.`,
+      ...actions,
       'Undo Archive'
     );
     if (pick === 'Undo Archive') await restoreLastRound();
+    if (pick === 'Open') await vscode.window.showTextDocument(vscode.Uri.file(written), { preview: false });
   }
 
   // Mid-round check: which of the last round's items has the agent touched so far?

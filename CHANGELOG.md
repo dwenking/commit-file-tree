@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.4.13
+- Export no longer opens the summary in the editor; it copies to the clipboard and writes the file quietly. The toast has an "Open" button when you want to look at it.
+
 ## 0.4.12
 - New: round tracking. The export opens with a "Previous round" checklist: `[x]` the commented span (or noted file) changed since that round's commit, `[ ]` untouched, `[?]` no stable base (working-copy comments). Check mid-round anytime with "Commit Review Tree: Check Last Round" in the command palette.
 - Fixed: the tree did not refresh after a push (the remote-tracking ref lives under `refs/remotes`, which was not watched; in a linked worktree it lives in the common git dir). The git-dir watch is now recursive and covers the common dir too.
