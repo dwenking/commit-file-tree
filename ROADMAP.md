@@ -4,13 +4,19 @@ Solo-maintained. Discrete feature requests go to GitHub Issues; this file holds 
 
 ## Now
 
-1. **Working tree node** — show uncommitted changes as a pseudo-commit at the top of the commit view. Agents leave dirty trees beside their commits; today those are invisible.
-2. **Export to file** — write the review summary to a stable path (in addition to the clipboard) so agents can read it directly. Optionally emit `suggestion` blocks the agent can apply verbatim.
-3. **Round tracking** — after new commits land, mark each archived comment as addressed (commented span changed between its commit and HEAD) or still open. Data source is the existing archive in workspace storage, not the exported file.
+- (empty — pick from Next, or wait for an Issue)
 
 ## Next
 
 - Base-ref picker: review "since main" / "since tag" even after pushing.
+- Tree decoration for still-open items from the previous round — only if "Check Last Round" gets run constantly.
+- `suggestion` blocks in the export that the agent can apply verbatim — only if plain comments prove too ambiguous for agents.
+
+## Shipped
+
+- 0.4.12 — Round tracking: previous-round checklist in the export, "Check Last Round" command, timestamped per-round files, export always archives. Fix: refresh after push.
+- 0.4.11 — Export to file (`.commit-review/latest.md`, git-excluded via `.git/info/exclude`).
+- 0.4.10 — Working tree node for uncommitted changes.
 
 ## Decided against (for now)
 
