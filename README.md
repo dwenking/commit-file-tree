@@ -31,7 +31,7 @@ After installing, open the **Source Control** sidebar (`Cmd/Ctrl+Shift+G`). The 
 
 - **GitHub-style line comments** — click "+" in the diff gutter to comment on the cursor line, or select multiple lines to comment on the whole span. Threads are keyed to the immutable commit, so they never drift, persist across reloads, and show as 💬 counts in the tree.
 - **Reviewed checkmarks** — mark files done as you go; they dim with a ✓ so interrupted reviews resume exactly where you stopped.
-- **File notes** — attach a whole-file remark (📝) when a line comment is too narrow.
+- **File and folder notes** — attach a whole-file or whole-folder remark (📝) when a line comment is too narrow.
 - Renames, added, deleted files, and root commits all open correct diffs.
 
 ### Close the loop with the agent

@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.4.17
+- New: folder notes. Folder rows have the same Add/Edit Note button as files; a noted folder shows 📝, and the note is exported under Action items as `### path/ (folder)`.
+
 ## 0.4.16
 - The Combined view's "include uncommitted changes" option is now a checkbox row at the top of the tree instead of a title-bar toggle button.
 - Requires VS Code 1.80 or newer (tree checkboxes).

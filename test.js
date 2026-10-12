@@ -134,6 +134,17 @@ const cp = require('child_process');
   assert.deepStrictEqual(items.slice(1).map((i) => i.label).sort(), ['f2.js', 'f3.js']);
   assert.strictEqual(items[1].command.command, 'commitFileTree.openDiff');
 
+  // Folder rows take notes keyed by path + '/', shown as a 📝 marker
+  sh('mkdir -p sub && echo y > sub/a.txt');
+  items = await provider.getCombined(repo);
+  const dir = items.find((i) => i.contextValue === 'dir');
+  assert.strictEqual(dir.reviewId, `${dir.ctx.keyRef}:sub/`);
+  mem['cft.notes'] = { [dir.reviewId]: 'too big' };
+  items = await provider.getCombined(repo);
+  assert.strictEqual(items.find((i) => i.contextValue === 'dir').description, '📝');
+  mem['cft.notes'] = {};
+  sh('rm -r sub');
+
   // The checkbox row decides whether uncommitted files join the combined tree
   sh('echo x > local.txt');
   items = await provider.getCombined(repo);
@@ -424,6 +435,11 @@ const mdNoteOutside = buildSummaryMd({
 });
 assert.ok(mdNoteOutside.includes('### src/config.ts (working copy · file note)'), 'note-outside heading missing');
 assert.ok(mdNoteOutside.includes('update this config too'));
+
+// Folder notes render as action items with a trailing-slash heading
+const mdFolder = buildSummaryMd({ rangeLabel: 'x..y', files: [], folders: [{ path: 'src/api/', text: 'split this module' }] });
+assert.ok(mdFolder.includes('## Action items'), 'folder note must be an action item');
+assert.ok(mdFolder.includes('### src/api/ (folder)\n\nsplit this module'), 'folder note heading missing');
 
 // Controller watchdog: Cursor's idle ext-host restart silently drops our
 // comment controller on the main thread. A poke that is never answered by a

@@ -297,8 +297,10 @@ function buildSummaryMd(data) {
     lines.push('');
   }
   const withFeedback = data.files.filter((f) => f.note || (f.comments && f.comments.length));
-  if (withFeedback.length) {
+  const folders = data.folders || [];
+  if (withFeedback.length || folders.length) {
     lines.push('## Action items', '');
+    for (const d of folders) lines.push(`### ${d.path} (folder)`, '', d.text, '');
     for (const f of withFeedback) {
       if (f.note) lines.push(`### ${f.path}`, '', f.note, '');
       for (const c of f.comments || []) {
@@ -525,7 +527,7 @@ class CommitTreeProvider {
   async editNote(item) {
     const notes = { ...this.notes() };
     const text = await vscode.window.showInputBox({
-      prompt: `Note for ${item.filePath}`,
+      prompt: `Note for ${item.filePath || item.notePath}`,
       value: notes[item.reviewId] || '',
       placeHolder: 'Leave empty to remove the note',
     });
@@ -889,6 +891,7 @@ class CommitTreeProvider {
   }
 
   getTreeNodes(node, ctx) {
+    const notes = this.notes();
     const dirs = [...node.dirs.entries()]
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([rawName, rawChild]) => {
@@ -898,6 +901,11 @@ class CommitTreeProvider {
         item.node = child;
         item.ctx = ctx;
         item.iconPath = vscode.ThemeIcon.Folder;
+        // Folder notes key on a trailing slash so they never collide with a file path.
+        item.notePath = `${child.path}/`;
+        item.reviewId = this.reviewKey(ctx, item.notePath);
+        const note = notes[item.reviewId];
+        if (note) item.description = '📝';
         let agg = aggStatus(child);
         // Unchanged files never appear in the diff, so "all D" only means the
         // folder is gone if it no longer exists on disk.
@@ -910,6 +918,7 @@ class CommitTreeProvider {
           });
           item.tooltip = agg === 'D' ? 'Folder deleted (all files inside removed)' : 'All changed files inside are new';
         }
+        if (note) item.tooltip = [item.tooltip, `📝 ${note}`].filter(Boolean).join('\n');
         return item;
       });
     const files = node.files
@@ -1253,11 +1262,16 @@ function activate(context) {
     // in their own section — user feedback is never dropped.
     const filePaths = new Set(files.map((f) => f.path));
     data.outside = [];
+    data.folders = [];
     for (const [key, text] of Object.entries(notes)) {
       const idx = key.indexOf(':');
       const ref = key.slice(0, idx);
       const rel = key.slice(idx + 1);
       if (filePaths.has(rel) && refs.has(ref)) continue; // already in action items
+      if (rel.endsWith('/') && refs.has(ref)) {
+        data.folders.push({ path: rel, text });
+        continue;
+      }
       data.outside.push({ path: rel, ref, text });
     }
     for (const [key, list] of Object.entries(store)) {
