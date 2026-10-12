@@ -16,6 +16,7 @@ module.exports.TreeItem = class {
   }
 };
 module.exports.TreeItemCollapsibleState = { None: 0, Collapsed: 1, Expanded: 2 };
+module.exports.TreeItemCheckboxState = { Unchecked: 0, Checked: 1 };
 module.exports.ThemeIcon = class {};
 module.exports.ThemeIcon.Folder = {};
 module.exports.workspace = { workspaceFolders: undefined };
@@ -92,7 +93,8 @@ const cp = require('child_process');
   // Labels may be TreeItemLabel objects with a highlighted trailing tag.
   const lbl = (i) => (typeof i.label === 'string' ? i.label : i.label.label).split('  ')[0];
 
-  const provider = new CommitTreeProvider();
+  const mem = {};
+  const provider = new CommitTreeProvider({ get: (k, d) => (k in mem ? mem[k] : d), update: async (k, v) => { mem[k] = v; } });
   let items = await provider.getCommits(repo);
   // c3, c2 are unpushed; "Load more…" hides the single history commit c1
   assert.deepStrictEqual(items.map(lbl), ['c3', 'c2', 'Show pushed history…']);
@@ -128,8 +130,20 @@ const cp = require('child_process');
   // Combined mode: one tree for everything unpushed (f2.js, f3.js from c2/c3)
   provider.setMode('combined');
   items = await provider.getCombined(repo);
-  assert.deepStrictEqual(items.map((i) => i.label).sort(), ['f2.js', 'f3.js']);
-  assert.strictEqual(items[0].command.command, 'commitFileTree.openDiff');
+  assert.strictEqual(items[0].contextValue, 'includeLocal');
+  assert.deepStrictEqual(items.slice(1).map((i) => i.label).sort(), ['f2.js', 'f3.js']);
+  assert.strictEqual(items[1].command.command, 'commitFileTree.openDiff');
+
+  // The checkbox row decides whether uncommitted files join the combined tree
+  sh('echo x > local.txt');
+  items = await provider.getCombined(repo);
+  assert.ok(items.some((i) => i.label === 'local.txt'), 'checked: uncommitted file missing');
+  await provider.setIncludeLocal(false);
+  items = await provider.getCombined(repo);
+  assert.strictEqual(items[0].checkboxState, 0);
+  assert.ok(!items.some((i) => i.label === 'local.txt'), 'unchecked: uncommitted file shown');
+  await provider.setIncludeLocal(true);
+  sh('rm local.txt');
 
   // Dependency mode: f3.js imports f2.js, so f2.js is the root and f3.js its child
   provider.setMode('deps');

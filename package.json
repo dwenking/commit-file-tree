@@ -2,7 +2,7 @@
   "name": "commit-file-tree",
   "displayName": "Commit Review Tree",
   "description": "Review AI-generated commits like a PR: unpushed work as file trees (by commit, combined, or by dependencies), line comments, reviewed checkmarks, risk flags, and one-click export of feedback for your agent.",
-  "version": "0.4.15",
+  "version": "0.4.16",
   "publisher": "dwenking",
   "icon": "icon.png",
   "license": "MIT",
@@ -11,7 +11,7 @@
     "url": "https://github.com/dwenking/commit-file-tree.git"
   },
   "engines": {
-    "vscode": "^1.70.0"
+    "vscode": "^1.80.0"
   },
   "categories": [
     "SCM Providers"
@@ -39,16 +39,6 @@
         "command": "commitFileTree.viewCombined",
         "title": "View All Unpushed Changes as One Tree",
         "icon": "$(list-flat)"
-      },
-      {
-        "command": "commitFileTree.includeLocalOff",
-        "title": "Combined: Including Uncommitted Changes (click for committed only)",
-        "icon": "$(git-pull-request-draft)"
-      },
-      {
-        "command": "commitFileTree.includeLocalOn",
-        "title": "Combined: Committed Only (click to include uncommitted)",
-        "icon": "$(source-control)"
       },
       {
         "command": "commitFileTree.viewByDeps",
@@ -150,16 +140,6 @@
           "command": "commitFileTree.viewCombined",
           "when": "view == commitFileTree",
           "group": "navigation@2"
-        },
-        {
-          "command": "commitFileTree.includeLocalOff",
-          "when": "view == commitFileTree && commitFileTree.mode == combined && commitFileTree.includeLocal",
-          "group": "navigation@4"
-        },
-        {
-          "command": "commitFileTree.includeLocalOn",
-          "when": "view == commitFileTree && commitFileTree.mode == combined && !commitFileTree.includeLocal",
-          "group": "navigation@4"
         },
         {
           "command": "commitFileTree.viewByDeps",

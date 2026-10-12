@@ -413,8 +413,16 @@ class CommitTreeProvider {
 
   async setIncludeLocal(on) {
     await this.state.update('cft.includeLocal', on);
-    vscode.commands.executeCommand('setContext', 'commitFileTree.includeLocal', on);
     this.refresh();
+  }
+
+  includeLocalItem() {
+    const item = new vscode.TreeItem('Include uncommitted changes', vscode.TreeItemCollapsibleState.None);
+    item.contextValue = 'includeLocal';
+    item.checkboxState = this.includeLocal()
+      ? vscode.TreeItemCheckboxState.Checked
+      : vscode.TreeItemCheckboxState.Unchecked;
+    return item;
   }
 
   loadMore() {
@@ -659,15 +667,16 @@ class CommitTreeProvider {
       item.iconPath = new vscode.ThemeIcon('warning');
       return [item];
     }
-    if (!this.includeLocal()) {
-      if (ctx.base === ctx.target) return [this.allPushedItem()];
-      const out = await git(root, ['diff', '--name-status', ctx.base, ctx.target]);
-      return this.getTreeNodes(buildTree(parseNameStatus(out)), ctx);
+    let files;
+    if (this.includeLocal()) {
+      // Net result includes uncommitted work: diff the base against the working copy.
+      files = await this.workingTreeFiles(root, ctx.base);
+      ctx = { ...ctx, target: 'working' };
+    } else {
+      files = ctx.base === ctx.target ? [] : parseNameStatus(await git(root, ['diff', '--name-status', ctx.base, ctx.target]));
     }
-    // Net result includes uncommitted work: diff the base against the working copy.
-    const files = await this.workingTreeFiles(root, ctx.base);
-    if (!files.length) return [this.allPushedItem()];
-    return this.getTreeNodes(buildTree(files), { ...ctx, target: 'working' });
+    const nodes = files.length ? await this.getTreeNodes(buildTree(files), ctx) : [this.allPushedItem()];
+    return [this.includeLocalItem(), ...nodes];
   }
 
   // Dependency mode: roots are foundations (files importing no other changed
@@ -1029,7 +1038,6 @@ async function watchGitDirs(root, onChange) {
 function activate(context) {
   const provider = new CommitTreeProvider(context.workspaceState);
   vscode.commands.executeCommand('setContext', 'commitFileTree.mode', 'commits');
-  vscode.commands.executeCommand('setContext', 'commitFileTree.includeLocal', provider.includeLocal());
 
   async function reviewAll(item) {
     const root = provider.repoRoot;
@@ -1366,6 +1374,11 @@ function activate(context) {
   const view = vscode.window.createTreeView('commitFileTree', { treeDataProvider: provider });
   provider.view = view;
   view.description = 'by commits';
+  view.onDidChangeCheckboxState((e) => {
+    for (const [item, state] of e.items) {
+      if (item.contextValue === 'includeLocal') provider.setIncludeLocal(state === vscode.TreeItemCheckboxState.Checked);
+    }
+  });
 
   // Auto-refresh on commit, checkout, fetch, and push; debounce a burst into one refresh.
   (async () => {
@@ -1456,8 +1469,6 @@ function activate(context) {
     vscode.commands.registerCommand('commitFileTree.loadMore', () => provider.loadMore()),
     vscode.commands.registerCommand('commitFileTree.hideHistory', () => provider.hideHistory()),
     vscode.commands.registerCommand('commitFileTree.viewCombined', () => { setBack(undefined); provider.setMode('combined'); }),
-    vscode.commands.registerCommand('commitFileTree.includeLocalOff', () => provider.setIncludeLocal(false)),
-    vscode.commands.registerCommand('commitFileTree.includeLocalOn', () => provider.setIncludeLocal(true)),
     vscode.commands.registerCommand('commitFileTree.viewByDeps', () => { setBack(undefined); provider.setMode('deps'); }),
     vscode.commands.registerCommand('commitFileTree.viewByCommits', () => { setBack(undefined); provider.setMode('commits'); }),
     vscode.commands.registerCommand('commitFileTree.goBack', () => {

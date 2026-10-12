@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.16
+- The Combined view's "include uncommitted changes" option is now a checkbox row at the top of the tree instead of a title-bar toggle button.
+- Requires VS Code 1.80 or newer (tree checkboxes).
+
 ## 0.4.15
 - Fixed: the Combined view (and Review All) missed uncommitted changes, such as renames staged in a worktree. They now include them by default. A toggle in the view title bar switches between "including uncommitted" and "committed only"; the choice is remembered per workspace.
 
