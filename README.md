@@ -20,7 +20,7 @@ After installing, open the **Source Control** sidebar (`Cmd/Ctrl+Shift+G`). The 
 - **Working tree** — uncommitted changes (staged, unstaged, untracked) appear as a row above the commits, diffed against HEAD, so agent edits are reviewable before they are committed.
 - **Three view modes**, one click apart, with the active mode shown in the view header:
   - **By commits** — expand each commit into a real folder tree of its changes.
-  - **Combined** — the *net* result of all unpushed commits as one tree. Ideal when the agent made ten intermediate commits and you only care about the final state.
+  - **Combined** — the *net* result of all unpushed commits as one tree, including uncommitted changes (toggle in the title bar for committed-only). Ideal when the agent made ten intermediate commits and you only care about the final state.
   - **By dependencies** — changed files organized by who imports whom (`↑N` = imported by N changed files), so you review foundations before their callers. Files with no relationships are grouped under "Standalone files". Heuristic import analysis for JS/TS/Vue/Svelte, Python, Java/Kotlin/Scala, Go, Rust, C/C++, C#, Ruby, PHP.
 - **Jump between modes per file** — spotted an interesting file in the commit or combined view? Right-click → **Reveal in Dependency View** switches modes, expands its import chain from the root, and selects it — instant answer to "what does this file sit on, and what sits on it?" without hunting through the tree.
 - **Scope-drift risk flags** — the classic agent failure is touching things you didn't ask about. Deletions, lockfiles, CI config, env files, and build config are flagged with ⚠ and a reason.

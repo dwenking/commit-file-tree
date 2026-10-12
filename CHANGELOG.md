@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.4.15
+- Fixed: the Combined view (and Review All) missed uncommitted changes, such as renames staged in a worktree. They now include them by default. A toggle in the view title bar switches between "including uncommitted" and "committed only"; the choice is remembered per workspace.
+
 ## 0.4.14
 - Export format: empty sections are left out instead of showing a "No notes or comments" placeholder, and the title shows a single SHA when there are no unpushed commits (was `abc1234..abc1234`).
 
