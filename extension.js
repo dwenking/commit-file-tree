@@ -406,6 +406,17 @@ class CommitTreeProvider {
     this._onDidChangeTreeData.fire();
   }
 
+  // Whether combined/review-all include uncommitted work (default) or committed files only.
+  includeLocal() {
+    return this.state.get('cft.includeLocal', true);
+  }
+
+  async setIncludeLocal(on) {
+    await this.state.update('cft.includeLocal', on);
+    vscode.commands.executeCommand('setContext', 'commitFileTree.includeLocal', on);
+    this.refresh();
+  }
+
   loadMore() {
     this.extra += 50;
     this.refresh();
@@ -590,10 +601,10 @@ class CommitTreeProvider {
   // Uncommitted changes: base is HEAD, the "target" is the working copy on disk.
   static WORKING_CTX = { base: 'HEAD', target: 'working', keyRef: 'working' };
 
-  // Tracked edits (staged + unstaged) vs HEAD, plus untracked files as added.
-  async workingTreeFiles(root) {
+  // Tracked edits (staged + unstaged) vs base (HEAD by default), plus untracked files as added.
+  async workingTreeFiles(root, base = 'HEAD') {
     const [diff, untracked] = await Promise.all([
-      git(root, ['diff', 'HEAD', '--name-status', '-M']),
+      git(root, ['diff', base, '--name-status', '-M']),
       git(root, ['ls-files', '--others', '--exclude-standard']),
     ]);
     const files = parseNameStatus(diff);
@@ -648,9 +659,15 @@ class CommitTreeProvider {
       item.iconPath = new vscode.ThemeIcon('warning');
       return [item];
     }
-    if (ctx.base === ctx.target) return [this.allPushedItem()];
-    const out = await git(root, ['diff', '--name-status', ctx.base, ctx.target]);
-    return this.getTreeNodes(buildTree(parseNameStatus(out)), ctx);
+    if (!this.includeLocal()) {
+      if (ctx.base === ctx.target) return [this.allPushedItem()];
+      const out = await git(root, ['diff', '--name-status', ctx.base, ctx.target]);
+      return this.getTreeNodes(buildTree(parseNameStatus(out)), ctx);
+    }
+    // Net result includes uncommitted work: diff the base against the working copy.
+    const files = await this.workingTreeFiles(root, ctx.base);
+    if (!files.length) return [this.allPushedItem()];
+    return this.getTreeNodes(buildTree(files), { ...ctx, target: 'working' });
   }
 
   // Dependency mode: roots are foundations (files importing no other changed
@@ -1012,6 +1029,7 @@ async function watchGitDirs(root, onChange) {
 function activate(context) {
   const provider = new CommitTreeProvider(context.workspaceState);
   vscode.commands.executeCommand('setContext', 'commitFileTree.mode', 'commits');
+  vscode.commands.executeCommand('setContext', 'commitFileTree.includeLocal', provider.includeLocal());
 
   async function reviewAll(item) {
     const root = provider.repoRoot;
@@ -1028,7 +1046,12 @@ function activate(context) {
         title = 'Review working tree';
       } else {
         ctx = await provider.getUnpushedRange(root);
-        files = parseNameStatus(await git(root, ['diff', '--name-status', ctx.base, ctx.target]));
+        if (provider.includeLocal()) {
+          ctx = { ...ctx, target: 'working' };
+          files = await provider.workingTreeFiles(root, ctx.base);
+        } else {
+          files = parseNameStatus(await git(root, ['diff', '--name-status', ctx.base, ctx.target]));
+        }
         title = 'Review unpushed changes';
       }
     } catch (e) {
@@ -1433,6 +1456,8 @@ function activate(context) {
     vscode.commands.registerCommand('commitFileTree.loadMore', () => provider.loadMore()),
     vscode.commands.registerCommand('commitFileTree.hideHistory', () => provider.hideHistory()),
     vscode.commands.registerCommand('commitFileTree.viewCombined', () => { setBack(undefined); provider.setMode('combined'); }),
+    vscode.commands.registerCommand('commitFileTree.includeLocalOff', () => provider.setIncludeLocal(false)),
+    vscode.commands.registerCommand('commitFileTree.includeLocalOn', () => provider.setIncludeLocal(true)),
     vscode.commands.registerCommand('commitFileTree.viewByDeps', () => { setBack(undefined); provider.setMode('deps'); }),
     vscode.commands.registerCommand('commitFileTree.viewByCommits', () => { setBack(undefined); provider.setMode('commits'); }),
     vscode.commands.registerCommand('commitFileTree.goBack', () => {

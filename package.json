@@ -41,6 +41,16 @@
         "icon": "$(list-flat)"
       },
       {
+        "command": "commitFileTree.includeLocalOff",
+        "title": "Combined: Including Uncommitted Changes (click for committed only)",
+        "icon": "$(git-pull-request-draft)"
+      },
+      {
+        "command": "commitFileTree.includeLocalOn",
+        "title": "Combined: Committed Only (click to include uncommitted)",
+        "icon": "$(source-control)"
+      },
+      {
         "command": "commitFileTree.viewByDeps",
         "title": "View by Dependencies",
         "icon": "$(type-hierarchy)"
@@ -140,6 +150,16 @@
           "command": "commitFileTree.viewCombined",
           "when": "view == commitFileTree",
           "group": "navigation@2"
+        },
+        {
+          "command": "commitFileTree.includeLocalOff",
+          "when": "view == commitFileTree && commitFileTree.mode == combined && commitFileTree.includeLocal",
+          "group": "navigation@4"
+        },
+        {
+          "command": "commitFileTree.includeLocalOn",
+          "when": "view == commitFileTree && commitFileTree.mode == combined && !commitFileTree.includeLocal",
+          "group": "navigation@4"
         },
         {
           "command": "commitFileTree.viewByDeps",
