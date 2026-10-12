@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.21
+- New: archive exported rounds. Each round in the Comments view has an inline Archive button; archived rounds move into a collapsed "Archived rounds (N)" group at the bottom, hidden until you open it, and can be unarchived from there. Content and exported files are untouched.
+- "Archive" now only means hiding a round: the export toast's "Undo Archive" is now "Undo Export", and "Restore Last Archived Round" is now "Restore Last Exported Round" (same behavior).
+- Comments-view entry and round commands no longer show up (non-functional) in the command palette.
+
 ## 0.4.20
 - Comments view is now a round-by-round overview: **Current round** (editable, not exported yet) on top, then every exported round, newest first. Click a round to open the markdown file it was exported to; expand the latest round for the ✅ addressed / ⚠️ untouched / ❓ unknown checklist, and click any item to jump to its line. Older rounds list their items without status.
 - Removed the "Check Last Round" command — the same checklist lives under the latest round in the Comments view. The export toast no longer has an "Open" button (the round node opens the file); "Undo Archive" stays.

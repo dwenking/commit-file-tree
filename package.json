@@ -2,7 +2,7 @@
   "name": "commit-file-tree",
   "displayName": "Commit Review Tree",
   "description": "Review AI-generated commits like a PR: unpushed work as file trees (by commit, combined, or by dependencies), line comments, reviewed checkmarks, risk flags, and one-click export of feedback for your agent.",
-  "version": "0.4.20",
+  "version": "0.4.21",
   "publisher": "dwenking",
   "icon": "icon.png",
   "license": "MIT",
@@ -86,6 +86,16 @@
         "icon": "$(trash)"
       },
       {
+        "command": "commitFileTree.archiveRound",
+        "title": "Archive Round",
+        "icon": "$(archive)"
+      },
+      {
+        "command": "commitFileTree.unarchiveRound",
+        "title": "Unarchive Round",
+        "icon": "$(reply)"
+      },
+      {
         "command": "commitFileTree.exportSummary",
         "title": "Export Review Summary (copy for AI)",
         "icon": "$(export)"
@@ -131,7 +141,7 @@
       },
       {
         "command": "commitFileTree.restoreLastRound",
-        "title": "Commit Review Tree: Restore Last Archived Round",
+        "title": "Commit Review Tree: Restore Last Exported Round",
         "icon": "$(history)"
       }
     ],
@@ -237,6 +247,16 @@
           "command": "commitFileTree.deleteEntry",
           "when": "view == commitFileTree && viewItem == commententry",
           "group": "inline@2"
+        },
+        {
+          "command": "commitFileTree.archiveRound",
+          "when": "view == commitFileTree && viewItem == round",
+          "group": "inline@1"
+        },
+        {
+          "command": "commitFileTree.unarchiveRound",
+          "when": "view == commitFileTree && viewItem == roundarchived",
+          "group": "inline@1"
         }
       ],
       "commandPalette": [
@@ -282,6 +302,22 @@
         },
         {
           "command": "commitFileTree.goBack",
+          "when": "false"
+        },
+        {
+          "command": "commitFileTree.archiveRound",
+          "when": "false"
+        },
+        {
+          "command": "commitFileTree.unarchiveRound",
+          "when": "false"
+        },
+        {
+          "command": "commitFileTree.editEntry",
+          "when": "false"
+        },
+        {
+          "command": "commitFileTree.deleteEntry",
           "when": "false"
         }
       ]

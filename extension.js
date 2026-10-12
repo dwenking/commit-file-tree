@@ -583,7 +583,9 @@ class CommitTreeProvider {
       if (element.contextValue === 'worktree') {
         return this.getTreeNodes(buildTree(await this.workingTreeFiles(root)), CommitTreeProvider.WORKING_CTX);
       }
-      if (element.contextValue === 'roundcurrent' || element.contextValue === 'round') return element.children;
+      if (['roundcurrent', 'round', 'roundarchived', 'archivedrounds'].includes(element.contextValue)) {
+        return element.children;
+      }
       if (element.contextValue === 'commentgroup') {
         return element.entries.map((e) => this.commentEntryItem(element.label, e));
       }
@@ -780,11 +782,33 @@ class CommitTreeProvider {
     cur.iconPath = new vscode.ThemeIcon('edit', new vscode.ThemeColor('charts.green'));
     const rounds = this.state.get('cft.archive.rounds', []);
     const items = [cur];
+    const archived = [];
     for (let i = rounds.length - 1; i >= 0; i--) {
-      const latest = i === rounds.length - 1;
-      items.push(await this.roundItem(root, rounds[i], i + 1, latest));
+      const item = await this.roundItem(root, rounds[i], i + 1, i === rounds.length - 1);
+      item.roundIndex = i;
+      if (rounds[i].archived) {
+        item.contextValue = 'roundarchived';
+        archived.push(item);
+      } else {
+        items.push(item);
+      }
+    }
+    // Archived rounds stay out of the way: collapsed until the user opens the group.
+    if (archived.length) {
+      const group = new vscode.TreeItem(`Archived rounds (${archived.length})`, vscode.TreeItemCollapsibleState.Collapsed);
+      group.contextValue = 'archivedrounds';
+      group.iconPath = new vscode.ThemeIcon('archive');
+      group.children = archived;
+      items.push(group);
     }
     return items;
+  }
+
+  async setRoundArchived(index, archived) {
+    const rounds = [...this.state.get('cft.archive.rounds', [])];
+    rounds[index] = { ...rounds[index], archived };
+    await this.state.update('cft.archive.rounds', rounds);
+    this.refresh();
   }
 
   // An exported round: read-only entries; the latest one carries ✅/⚠️/❓ status
@@ -1544,16 +1568,16 @@ function activate(context) {
     updateArchiveContext();
     const pick = await vscode.window.showInformationMessage(
       `Review summary ${where} — exported as Round ${provider.state.get('cft.archive.rounds', []).length} in the Comments view.`,
-      'Undo Archive'
+      'Undo Export'
     );
-    if (pick === 'Undo Archive') await restoreLastRound();
+    if (pick === 'Undo Export') await restoreLastRound();
   }
 
   async function restoreLastRound() {
     const restored = await provider.restoreLastRound();
     updateArchiveContext();
     if (!restored) {
-      vscode.window.showInformationMessage('Commit Review Tree: no archived round to restore.');
+      vscode.window.showInformationMessage('Commit Review Tree: no exported round to restore.');
       return;
     }
     // Re-create threads for documents that are already open.
@@ -1646,6 +1670,8 @@ function activate(context) {
     vscode.commands.registerCommand('commitFileTree.deleteThread', deleteThread),
     vscode.commands.registerCommand('commitFileTree.exportSummary', exportSummary),
     vscode.commands.registerCommand('commitFileTree.editEntry', editEntry),
+    vscode.commands.registerCommand('commitFileTree.archiveRound', (item) => item && provider.setRoundArchived(item.roundIndex, true)),
+    vscode.commands.registerCommand('commitFileTree.unarchiveRound', (item) => item && provider.setRoundArchived(item.roundIndex, false)),
     vscode.commands.registerCommand('commitFileTree.deleteEntry', deleteEntry),
     vscode.commands.registerCommand('commitFileTree.viewComments', () => { setBack(undefined); provider.setMode('comments'); }),
     vscode.commands.registerCommand('commitFileTree.clearReviewData', clearReviewData),

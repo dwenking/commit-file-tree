@@ -11,8 +11,9 @@ module.exports.EventEmitter = class {
   fire() {}
 };
 module.exports.TreeItem = class {
-  constructor(label) {
+  constructor(label, collapsibleState) {
     this.label = label;
+    if (collapsibleState !== undefined) this.collapsibleState = collapsibleState;
   }
 };
 module.exports.TreeItemCollapsibleState = { None: 0, Collapsed: 1, Expanded: 2 };
@@ -189,6 +190,16 @@ const cp = require('child_process');
   assert.deepStrictEqual([lbl(kids[0]), kids[0].description], ['latest ask', '❓ f3.js']);
   kids = await provider.getChildren(items[2]);
   assert.deepStrictEqual([lbl(kids[0]), kids[0].description], ['old ask', 'f2.js:1']);
+  // Archiving a round tucks it into a collapsed "Archived rounds" group; unarchive brings it back
+  await provider.setRoundArchived(items[2].roundIndex, true);
+  items = await provider.getCommentsView(repo);
+  assert.deepStrictEqual(items.map((i) => lbl(i).split(' ·')[0]), ['Current round', 'Round 2', 'Archived rounds (1)']);
+  assert.strictEqual(items[2].collapsibleState, 1); // Collapsed: hidden until opened
+  kids = await provider.getChildren(items[2]);
+  assert.deepStrictEqual([lbl(kids[0]).split(' ·')[0], kids[0].contextValue], ['Round 1', 'roundarchived']);
+  await provider.setRoundArchived(kids[0].roundIndex, false);
+  items = await provider.getCommentsView(repo);
+  assert.deepStrictEqual(items.map((i) => lbl(i).split(' ·')[0]), ['Current round', 'Round 2', 'Round 1']);
   mem['cft.archive.rounds'] = [];
 
   // The checkbox row decides whether uncommitted files join the combined tree
