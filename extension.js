@@ -475,11 +475,12 @@ class CommitTreeProvider {
 
   // Export ends a review round: move comments and notes into a per-round
   // archive so the next round starts clean. Rounds can be restored one by one.
-  async archiveReviewData() {
+  // file: repo-relative path of this round's exported markdown, if one was written.
+  async archiveReviewData(file) {
     const comments = this.comments();
     const notes = this.notes();
     const rounds = [...this.state.get('cft.archive.rounds', [])];
-    rounds.push({ at: Date.now(), comments, notes });
+    rounds.push({ at: Date.now(), comments, notes, ...(file ? { file } : {}) });
     await this.state.update('cft.archive.rounds', rounds);
     await this.state.update('cft.comments', {});
     await this.state.update('cft.notes', {});
@@ -582,6 +583,7 @@ class CommitTreeProvider {
       if (element.contextValue === 'worktree') {
         return this.getTreeNodes(buildTree(await this.workingTreeFiles(root)), CommitTreeProvider.WORKING_CTX);
       }
+      if (element.contextValue === 'roundcurrent' || element.contextValue === 'round') return element.children;
       if (element.contextValue === 'commentgroup') {
         return element.entries.map((e) => this.commentEntryItem(element.label, e));
       }
@@ -766,8 +768,73 @@ class CommitTreeProvider {
     return data;
   }
 
-  // Comments mode: every stored note/comment (all of it goes into the export), grouped by path.
+  // Current round: every stored note/comment (all of it goes into the export), grouped by path.
+  // Comments mode: the current (editable) round, then every exported round, newest first.
   async getCommentsView(root) {
+    const groups = await this.currentGroups(root);
+    const count = groups.reduce((n, g) => n + (g.entries ? g.entries.length : 0), 0);
+    const cur = new vscode.TreeItem('Current round', vscode.TreeItemCollapsibleState.Expanded);
+    cur.contextValue = 'roundcurrent';
+    cur.children = groups;
+    cur.description = `${count} · not exported`;
+    cur.iconPath = new vscode.ThemeIcon('edit', new vscode.ThemeColor('charts.green'));
+    const rounds = this.state.get('cft.archive.rounds', []);
+    const items = [cur];
+    for (let i = rounds.length - 1; i >= 0; i--) {
+      const latest = i === rounds.length - 1;
+      items.push(await this.roundItem(root, rounds[i], i + 1, latest));
+    }
+    return items;
+  }
+
+  // An exported round: read-only entries; the latest one carries ✅/⚠️/❓ status
+  // (did the agent touch it since?). Older rounds skip the git diffs.
+  async roundItem(root, round, n, latest) {
+    const split = (key) => [key.slice(0, key.indexOf(':')), key.slice(key.indexOf(':') + 1)];
+    let entries;
+    if (latest) {
+      entries = await lastRoundStatus(root, round);
+    } else {
+      entries = [
+        ...Object.entries(round.notes || {}).map(([key, text]) => ({ path: split(key)[1], text })),
+        ...Object.entries(round.comments || {}).flatMap(([key, list]) =>
+          list.map((c) => ({ path: split(key)[1], line: c.line, endLine: c.endLine, text: c.text }))
+        ),
+      ];
+    }
+    const d = new Date(round.at);
+    const pad = (x) => String(x).padStart(2, '0');
+    const when = `${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    const item = new vscode.TreeItem(`Round ${n} · ${when}`, vscode.TreeItemCollapsibleState.Collapsed);
+    item.contextValue = 'round';
+    item.iconPath = new vscode.ThemeIcon('export', new vscode.ThemeColor('charts.purple'));
+    const mark = (e) => (e.addressed === undefined ? '' : e.addressed === null ? '❓' : e.addressed ? '✅' : '⚠️');
+    const desc = [`${entries.length} item(s)`];
+    if (latest) {
+      const tally = ['✅', '⚠️', '❓'].map((m) => [m, entries.filter((e) => mark(e) === m).length]);
+      desc.push(tally.filter(([, k]) => k).map(([m, k]) => `${m}${k}`).join(' '));
+    }
+    item.description = desc.filter(Boolean).join(' · ');
+    if (round.file) {
+      item.tooltip = `Exported to ${round.file} — click to open`;
+      item.command = { command: 'vscode.open', title: 'Open', arguments: [vscode.Uri.file(path.join(root, round.file))] };
+    }
+    item.children = entries.map((e) => {
+      const loc = `${e.path}${e.line ? `:${e.line}${e.endLine ? '-' + e.endLine : ''}` : ''}`;
+      const child = new vscode.TreeItem(e.text.split('\n')[0], vscode.TreeItemCollapsibleState.None);
+      child.contextValue = 'roundentry';
+      child.description = [mark(e), loc].filter(Boolean).join(' ');
+      child.tooltip = e.text;
+      if (!e.path.endsWith('/')) {
+        const opts = e.line ? { selection: new vscode.Range(e.line - 1, 0, (e.endLine || e.line) - 1, 0) } : {};
+        child.command = { command: 'vscode.open', title: 'Open', arguments: [vscode.Uri.file(path.join(root, e.path)), opts] };
+      }
+      return child;
+    });
+    return item;
+  }
+
+  async currentGroups(root) {
     const groups = new Map();
     const split = (key) => [key.slice(0, key.indexOf(':')), key.slice(key.indexOf(':') + 1)];
     const add = (p, entry) => groups.set(p, [...(groups.get(p) || []), entry]);
@@ -799,6 +866,9 @@ class CommitTreeProvider {
         item.contextValue = 'commentgroup';
         item.entries = entries;
         item.description = `${entries.length}`;
+        // File-type icon from the icon theme, like the other views' file rows.
+        // The query keeps git's M/U label colors off these rows (they are comment groups, not changes).
+        item.resourceUri = vscode.Uri.file(path.join(root, p)).with({ query: 'cftComments' });
         item.iconPath = p.endsWith('/') ? vscode.ThemeIcon.Folder : vscode.ThemeIcon.File;
         return item;
       });
@@ -838,7 +908,9 @@ class CommitTreeProvider {
     item.entry = e;
     const span = e.line ? `L${e.line}${e.endLine ? '-' + e.endLine : ''}` : '';
     item.description = [span, e.tag].filter(Boolean).join(' · ');
-    item.iconPath = new vscode.ThemeIcon(e.line ? 'comment' : 'note');
+    // Colored icons set entries apart from the plain file rows they sit under.
+    const icon = e.line ? ['comment', 'charts.blue'] : e.tag === 'folder note' ? ['note', 'charts.orange'] : ['note', 'charts.yellow'];
+    item.iconPath = new vscode.ThemeIcon(icon[0], new vscode.ThemeColor(icon[1]));
     const md = new vscode.MarkdownString();
     if (e.code) md.appendMarkdown('```\n' + e.code + '\n```\n\n');
     md.appendMarkdown(e.text.replace(/\n/g, '  \n'));
@@ -860,23 +932,26 @@ class CommitTreeProvider {
       item.iconPath = new vscode.ThemeIcon('warning');
       return [item];
     }
-    let files;
-    if (this.includeLocal()) {
-      // Net result includes uncommitted work: diff the base against the working copy.
-      files = await this.workingTreeFiles(root, ctx.base);
-      ctx = { ...ctx, target: 'working' };
-    } else {
-      files = ctx.base === ctx.target ? [] : parseNameStatus(await git(root, ['diff', '--name-status', ctx.base, ctx.target]));
-    }
-    const nodes = files.length ? await this.getTreeNodes(buildTree(files), ctx) : [this.allPushedItem()];
+    const range = await this.rangeFiles(root, ctx);
+    const nodes = range.files.length ? await this.getTreeNodes(buildTree(range.files), range.ctx) : [this.allPushedItem()];
     return [this.includeLocalItem(), ...nodes];
+  }
+
+  // Files of the unpushed range, honoring "Include uncommitted changes": when on,
+  // diff the base against the working copy and retarget ctx at it.
+  async rangeFiles(root, ctx) {
+    if (this.includeLocal()) {
+      return { files: await this.workingTreeFiles(root, ctx.base), ctx: { ...ctx, target: 'working' } };
+    }
+    if (ctx.base === ctx.target) return { files: [], ctx };
+    return { files: parseNameStatus(await git(root, ['diff', '--name-status', ctx.base, ctx.target])), ctx };
   }
 
   // Dependency mode: roots are foundations (files importing no other changed
   // file, review them first); a file's children are the changed files that
   // import it. Cycles surface their members as extra roots.
   async getDeps(root) {
-    let ctx;
+    let ctx, files;
     try {
       ctx = await this.getUnpushedRange(root);
     } catch (e) {
@@ -885,10 +960,14 @@ class CommitTreeProvider {
       item.iconPath = new vscode.ThemeIcon('warning');
       return [item];
     }
-    if (ctx.base === ctx.target) return [this.allPushedItem()];
-    const files = parseNameStatus(await git(root, ['diff', '--name-status', ctx.base, ctx.target]));
+    ({ files, ctx } = await this.rangeFiles(root, ctx));
+    if (!files.length) return [this.includeLocalItem(), this.allPushedItem()];
     const sources = new Map();
     for (const f of files) {
+      if (f.status !== 'D' && ctx.target === 'working') {
+        sources.set(f.path, await fs.promises.readFile(path.join(root, f.path), 'utf8').catch(() => ''));
+        continue;
+      }
       const ref = f.status === 'D' ? ctx.base : ctx.target;
       sources.set(f.path, await git(root, ['show', `${ref}:${f.path}`]).catch(() => ''));
     }
@@ -916,8 +995,8 @@ class CommitTreeProvider {
     const connected = roots.filter((p) => (importers.get(p) || []).length);
     const grouped = connected.length > 0 && isolated.length > 0;
     this._deps = { ctx, importers, outEdges, grouped, isolated, meta: new Map(files.map((f) => [f.path, f])) };
-    if (!connected.length) return roots.map((p) => this.depItem(p, [p]));
-    const items = connected.map((p) => this.depItem(p, [p]));
+    if (!connected.length) return [this.includeLocalItem(), ...roots.map((p) => this.depItem(p, [p]))];
+    const items = [this.includeLocalItem(), ...connected.map((p) => this.depItem(p, [p]))];
     if (grouped) items.push(this.depGroupItem());
     return items;
   }
@@ -1253,13 +1332,7 @@ function activate(context) {
         files = await provider.workingTreeFiles(root);
         title = 'Review working tree';
       } else {
-        ctx = await provider.getUnpushedRange(root);
-        if (provider.includeLocal()) {
-          ctx = { ...ctx, target: 'working' };
-          files = await provider.workingTreeFiles(root, ctx.base);
-        } else {
-          files = parseNameStatus(await git(root, ['diff', '--name-status', ctx.base, ctx.target]));
-        }
+        ({ files, ctx } = await provider.rangeFiles(root, await provider.getUnpushedRange(root)));
         title = 'Review unpushed changes';
       }
     } catch (e) {
@@ -1453,41 +1526,27 @@ function activate(context) {
       if (pick === 'Open') await vscode.window.showTextDocument(vscode.Uri.file(written), { preview: false });
       return;
     }
-    // Export ends the round: archive delivered feedback so the next round starts clean.
-    const counts = await provider.archiveReviewData();
     // Keep a timestamped copy beside the latest file (e.g. .commit-review/2026-09-24_1608.md),
-    // so the history of what was asked stays readable and sorts by time.
-    if (exportPath) {
+    // so the history of what was asked stays readable and sorts by time. The round
+    // remembers it, so the Comments view can open exactly what was delivered.
+    let stamped;
+    if (written) {
       const d = new Date();
       const pad = (n) => String(n).padStart(2, '0');
       const stamp = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}`;
-      const stamped = path.posix.join(path.posix.dirname(exportPath), `${stamp}${path.extname(exportPath)}`);
-      await writeReviewFile(root, stamped, md).catch(() => {});
+      stamped = path.posix.join(path.posix.dirname(exportPath), `${stamp}${path.extname(exportPath)}`);
+      stamped = await writeReviewFile(root, stamped, md).then(() => stamped, () => exportPath);
     }
+    // Export ends the round: archive delivered feedback so the next round starts clean.
+    await provider.archiveReviewData(stamped);
     liveThreads.forEach((t) => t.dispose());
     liveThreads.clear();
     updateArchiveContext();
     const pick = await vscode.window.showInformationMessage(
-      `Review summary ${where} — archived ${counts.comments} comment(s) and ${counts.notes} note(s) for the next round.`,
-      ...actions,
+      `Review summary ${where} — exported as Round ${provider.state.get('cft.archive.rounds', []).length} in the Comments view.`,
       'Undo Archive'
     );
     if (pick === 'Undo Archive') await restoreLastRound();
-    if (pick === 'Open') await vscode.window.showTextDocument(vscode.Uri.file(written), { preview: false });
-  }
-
-  // Mid-round check: which of the last round's items has the agent touched so far?
-  async function checkLastRound() {
-    const root = provider.repoRoot;
-    const rounds = provider.state.get('cft.archive.rounds', []);
-    if (!root || !rounds.length) {
-      vscode.window.showInformationMessage('Commit Review Tree: no archived round to check.');
-      return;
-    }
-    const previous = await lastRoundStatus(root, rounds[rounds.length - 1]);
-    const md = buildSummaryMd({ rangeLabel: `round ${rounds.length} vs HEAD`, files: [], previous });
-    const doc = await vscode.workspace.openTextDocument({ content: md, language: 'markdown' });
-    await vscode.window.showTextDocument(doc);
   }
 
   async function restoreLastRound() {
@@ -1589,7 +1648,6 @@ function activate(context) {
     vscode.commands.registerCommand('commitFileTree.editEntry', editEntry),
     vscode.commands.registerCommand('commitFileTree.deleteEntry', deleteEntry),
     vscode.commands.registerCommand('commitFileTree.viewComments', () => { setBack(undefined); provider.setMode('comments'); }),
-    vscode.commands.registerCommand('commitFileTree.checkLastRound', checkLastRound),
     vscode.commands.registerCommand('commitFileTree.clearReviewData', clearReviewData),
     vscode.commands.registerCommand('commitFileTree.restoreLastRound', restoreLastRound),
     vscode.commands.registerCommand('commitFileTree.revealInDeps', revealInDeps),

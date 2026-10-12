@@ -2,7 +2,7 @@
   "name": "commit-file-tree",
   "displayName": "Commit Review Tree",
   "description": "Review AI-generated commits like a PR: unpushed work as file trees (by commit, combined, or by dependencies), line comments, reviewed checkmarks, risk flags, and one-click export of feedback for your agent.",
-  "version": "0.4.19",
+  "version": "0.4.20",
   "publisher": "dwenking",
   "icon": "icon.png",
   "license": "MIT",
@@ -133,10 +133,6 @@
         "command": "commitFileTree.restoreLastRound",
         "title": "Commit Review Tree: Restore Last Archived Round",
         "icon": "$(history)"
-      },
-      {
-        "command": "commitFileTree.checkLastRound",
-        "title": "Commit Review Tree: Check Last Round (what did the agent address?)"
       }
     ],
     "menus": {

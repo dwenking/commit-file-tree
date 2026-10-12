@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.20
+- Comments view is now a round-by-round overview: **Current round** (editable, not exported yet) on top, then every exported round, newest first. Click a round to open the markdown file it was exported to; expand the latest round for the ✅ addressed / ⚠️ untouched / ❓ unknown checklist, and click any item to jump to its line. Older rounds list their items without status.
+- Removed the "Check Last Round" command — the same checklist lives under the latest round in the Comments view. The export toast no longer has an "Open" button (the round node opens the file); "Undo Archive" stays.
+- Comments view: colored icons (blue line comments, yellow file notes, orange folder notes) set entries apart from the file rows they sit under.
+- Dependencies view: the same "Include uncommitted changes" checkbox as the Combined view (one shared setting), so uncommitted files take part in the import analysis.
+
 ## 0.4.19
 - Comments view: each line comment and note has inline ✏️ edit and 🗑 delete buttons. Changes also update threads already shown in open editors.
 - Comments view now lists every stored comment and note directly (faster); the "outside this change" tag is only in the export.

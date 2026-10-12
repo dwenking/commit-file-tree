@@ -146,10 +146,13 @@ const cp = require('child_process');
   mem['cft.notes'] = {};
   sh('rm -r sub');
 
-  // Comments mode: one row per commented path, its notes/comments as children
+  // Comments mode: "Current round" first; inside it one row per commented path
   mem['cft.comments'] = { 'working:f2.js': [{ line: 1, endLine: 2, text: 'fix this\nsecond line' }] };
   mem['cft.notes'] = { 'working:f3.js': 'whole file note' };
+  const current = async () => provider.getChildren((await provider.getCommentsView(repo))[0]);
   items = await provider.getCommentsView(repo);
+  assert.deepStrictEqual(items.map(lbl), ['Current round']);
+  items = await current();
   assert.deepStrictEqual(items.map(lbl), ['f2.js', 'f3.js']);
   let kids = await provider.getChildren(items[0]);
   assert.deepStrictEqual([lbl(kids[0]), kids[0].description], ['fix this', 'L1-2']);
@@ -161,16 +164,32 @@ const cp = require('child_process');
   assert.strictEqual(kids[0].contextValue, 'commententry');
   await provider.updateEntry(kids[0], 'reworded');
   assert.deepStrictEqual(mem['cft.comments']['working:f2.js'], [{ line: 1, endLine: 2, text: 'reworded' }]);
-  kids = await provider.getChildren((await provider.getCommentsView(repo))[1]);
+  kids = await provider.getChildren((await current())[1]);
   await provider.updateEntry(kids[0], 'new note');
   assert.strictEqual(mem['cft.notes']['working:f3.js'], 'new note');
   await provider.deleteEntry(kids[0]);
   assert.strictEqual(mem['cft.notes']['working:f3.js'], undefined);
-  kids = await provider.getChildren((await provider.getCommentsView(repo))[0]);
+  kids = await provider.getChildren((await current())[0]);
   await provider.deleteEntry(kids[0]);
   assert.strictEqual(mem['cft.comments']['working:f2.js'], undefined);
+  assert.deepStrictEqual((await current()).map(lbl), ['No comments yet']);
+
+  // Exported rounds follow, newest first; only the latest gets ✅/⚠️/❓ status,
+  // and a round with a recorded file opens it on click
+  mem['cft.archive.rounds'] = [
+    { at: 1, comments: { 'working:f2.js': [{ line: 1, text: 'old ask' }] }, notes: {} },
+    { at: 2, comments: {}, notes: { 'working:f3.js': 'latest ask' }, file: '.commit-review/r2.md' },
+  ];
   items = await provider.getCommentsView(repo);
-  assert.deepStrictEqual(items.map(lbl), ['No comments yet']);
+  assert.deepStrictEqual(items.map((i) => lbl(i).split(' ·')[0]), ['Current round', 'Round 2', 'Round 1']);
+  assert.ok(items[1].description.includes('❓1'), 'latest round status missing');
+  assert.strictEqual(items[1].command.command, 'vscode.open');
+  assert.strictEqual(items[2].command, undefined); // older round without a file
+  kids = await provider.getChildren(items[1]);
+  assert.deepStrictEqual([lbl(kids[0]), kids[0].description], ['latest ask', '❓ f3.js']);
+  kids = await provider.getChildren(items[2]);
+  assert.deepStrictEqual([lbl(kids[0]), kids[0].description], ['old ask', 'f2.js:1']);
+  mem['cft.archive.rounds'] = [];
 
   // The checkbox row decides whether uncommitted files join the combined tree
   sh('echo x > local.txt');
@@ -185,7 +204,17 @@ const cp = require('child_process');
 
   // Dependency mode: f3.js imports f2.js, so f2.js is the root and f3.js its child
   provider.setMode('deps');
-  items = await provider.getDeps(repo);
+  // Same "Include uncommitted changes" checkbox row as the combined view
+  assert.strictEqual((await provider.getDeps(repo))[0].contextValue, 'includeLocal');
+  const deps = async () => (await provider.getDeps(repo)).filter((i) => i.contextValue !== 'includeLocal');
+  sh('echo "require(\'./f2\')" > local.js');
+  assert.ok((await deps()).length === 1 && (await provider.getChildren((await deps())[0])).some((i) => lbl(i) === 'local.js'),
+    'checked: uncommitted importer missing');
+  await provider.setIncludeLocal(false);
+  assert.ok(!(await provider.getChildren((await deps())[0])).some((i) => lbl(i) === 'local.js'), 'unchecked: uncommitted file shown');
+  await provider.setIncludeLocal(true);
+  sh('rm local.js');
+  items = await deps();
   assert.deepStrictEqual(items.map(lbl), ['f2.js']);
   assert.ok(items[0].description.startsWith('↑1'), 'dep root missing importer count');
   assert.strictEqual(items[0].contextValue, 'depfile');
@@ -196,7 +225,7 @@ const cp = require('child_process');
   // Renamed file has no import edges → grouped under "Standalone files",
   // and must diff against its old path at base
   sh('git mv f1 f1r && git commit -qm c4');
-  items = await provider.getDeps(repo);
+  items = await deps();
   assert.deepStrictEqual(items.map(lbl), ['f2.js', 'Standalone files (1)']);
   const standalone = await provider.getChildren(items[1]);
   const renamed = standalone.find((i) => lbl(i) === 'f1r');
@@ -210,7 +239,7 @@ const cp = require('child_process');
   // Expansion policy: roots start collapsed, but opened chains expand fully
   fs.writeFileSync(path.join(repo, 'f4.js'), "require('./f3');");
   sh('git add . && git commit -qm c5');
-  items = await provider.getDeps(repo);
+  items = await deps();
   const rootItem = items.find((i) => lbl(i) === 'f2.js');
   assert.strictEqual(rootItem.collapsibleState, 1); // Collapsed
   const mid = (await provider.getChildren(rootItem)).find((i) => lbl(i) === 'f3.js');
@@ -224,7 +253,7 @@ const cp = require('child_process');
   const names = items.map(lbl).sort();
   assert.ok(names.includes('f2.js') && names.includes('f4.js'), `unexpected: ${names}`);
   // Dependency view under the same fallback still splits chains from standalone files
-  items = await provider.getDeps(repo);
+  items = await deps();
   assert.deepStrictEqual(items.map(lbl), ['f2.js', 'Standalone files (1)']);
 
   // No upstream but remote refs exist (e.g. an unpushed worktree branch):
@@ -431,8 +460,9 @@ assert.ok(!md.includes('Comments outside this change'));
   const p = new CommitTreeProvider(state);
   mem['cft.comments'] = { 'sha1:a.js': [{ line: 1, text: 'old' }] };
   mem['cft.notes'] = { 'sha1:a.js': 'note one' };
-  let counts = await p.archiveReviewData();
+  let counts = await p.archiveReviewData('.commit-review/r1.md');
   assert.deepStrictEqual(counts, { comments: 1, notes: 1 });
+  assert.strictEqual(mem['cft.archive.rounds'][0].file, '.commit-review/r1.md');
   assert.deepStrictEqual(mem['cft.comments'], {});
   assert.deepStrictEqual(mem['cft.notes'], {});
   assert.strictEqual(mem['cft.archive.rounds'].length, 1);
