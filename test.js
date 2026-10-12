@@ -217,7 +217,11 @@ const cp = require('child_process');
   provider.setMode('deps');
   // Same "Include uncommitted changes" checkbox row as the combined view
   assert.strictEqual((await provider.getDeps(repo))[0].contextValue, 'includeLocal');
-  const deps = async () => (await provider.getDeps(repo)).filter((i) => i.contextValue !== 'includeLocal');
+  // ...followed by a search row that opens the fuzzy file finder
+  const search = (await provider.getDeps(repo))[1];
+  assert.deepStrictEqual([search.contextValue, search.command.command], ['depsearch', 'commitFileTree.findInDeps']);
+  const deps = async () =>
+    (await provider.getDeps(repo)).filter((i) => !['includeLocal', 'depsearch'].includes(i.contextValue));
   sh('echo "require(\'./f2\')" > local.js');
   assert.ok((await deps()).length === 1 && (await provider.getChildren((await deps())[0])).some((i) => lbl(i) === 'local.js'),
     'checked: uncommitted importer missing');

@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.4.22
+- New: fuzzy file search in the Dependencies view. A "Search files…" row at the top (under the uncommitted-changes checkbox) opens a quick pick of every changed file; type part of a class or file name (or folder), pick one, and the view expands its import chain and selects it.
+
 ## 0.4.21
 - New: archive exported rounds. Each round in the Comments view has an inline Archive button; archived rounds move into a collapsed "Archived rounds (N)" group at the bottom, hidden until you open it, and can be unarchived from there. Content and exported files are untouched.
 - "Archive" now only means hiding a round: the export toast's "Undo Archive" is now "Undo Export", and "Restore Last Archived Round" is now "Restore Last Exported Round" (same behavior).

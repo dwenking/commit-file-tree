@@ -1019,10 +1019,21 @@ class CommitTreeProvider {
     const connected = roots.filter((p) => (importers.get(p) || []).length);
     const grouped = connected.length > 0 && isolated.length > 0;
     this._deps = { ctx, importers, outEdges, grouped, isolated, meta: new Map(files.map((f) => [f.path, f])) };
-    if (!connected.length) return [this.includeLocalItem(), ...roots.map((p) => this.depItem(p, [p]))];
-    const items = [this.includeLocalItem(), ...connected.map((p) => this.depItem(p, [p]))];
+    const header = [this.includeLocalItem(), this.depSearchItem()];
+    if (!connected.length) return [...header, ...roots.map((p) => this.depItem(p, [p]))];
+    const items = [...header, ...connected.map((p) => this.depItem(p, [p]))];
     if (grouped) items.push(this.depGroupItem());
     return items;
+  }
+
+  // Tree views cannot host a text box: this row opens the fuzzy file finder instead.
+  depSearchItem() {
+    const item = new vscode.TreeItem('Search files…', vscode.TreeItemCollapsibleState.None);
+    item.contextValue = 'depsearch';
+    item.iconPath = new vscode.ThemeIcon('search');
+    item.description = 'find a changed file by class or file name';
+    item.command = { command: 'commitFileTree.findInDeps', title: 'Find File in Dependency View' };
+    return item;
   }
 
   depGroupItem() {
@@ -1660,6 +1671,25 @@ function activate(context) {
     }
   }
 
+  // Fuzzy-find a changed file by name (or path) and reveal it in the dependency tree,
+  // even when it sits deep inside a collapsed chain.
+  async function findInDeps() {
+    const root = provider.repoRoot;
+    if (!root) return;
+    await provider.getDeps(root);
+    if (!provider._deps) return;
+    const picks = [...provider._deps.meta.keys()].sort().map((p) => ({
+      label: path.basename(p),
+      description: path.dirname(p) === '.' ? '' : path.dirname(p),
+      filePath: p,
+    }));
+    const pick = await vscode.window.showQuickPick(picks, {
+      placeHolder: 'Find a changed file in the dependency view (type a class or file name)',
+      matchOnDescription: true,
+    });
+    if (pick) await revealInDeps(pick);
+  }
+
   context.subscriptions.push(
     view,
     { dispose: () => controller.dispose() },
@@ -1677,6 +1707,7 @@ function activate(context) {
     vscode.commands.registerCommand('commitFileTree.clearReviewData', clearReviewData),
     vscode.commands.registerCommand('commitFileTree.restoreLastRound', restoreLastRound),
     vscode.commands.registerCommand('commitFileTree.revealInDeps', revealInDeps),
+    vscode.commands.registerCommand('commitFileTree.findInDeps', findInDeps),
     vscode.window.registerFileDecorationProvider({
       provideFileDecoration(uri) {
         const m = /^cftStatus=([A-Z])&rev=([01])$/.exec(uri.query);
