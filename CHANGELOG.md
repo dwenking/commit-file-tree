@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.19
+- Comments view: each line comment and note has inline ✏️ edit and 🗑 delete buttons. Changes also update threads already shown in open editors.
+- Comments view now lists every stored comment and note directly (faster); the "outside this change" tag is only in the export.
+
 ## 0.4.18
 - New: Comments view, a fourth view mode (💬 in the title bar). Every line comment, file note, and folder note is listed by path; hover for the quoted code and full text, click to jump to the line. Updates live as you comment.
 - Export: the markdown is easier to scan, with icons and a count — `🎯 Action items (N)`, `💬` line comments, `📝` file notes, `📁` folder notes, `🔁 Previous round` with ✅ / ⚠️ / ❓, `🌐` comments outside the change.

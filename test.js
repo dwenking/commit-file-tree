@@ -156,8 +156,19 @@ const cp = require('child_process');
   assert.strictEqual(kids[0].command.command, 'vscode.open');
   kids = await provider.getChildren(items[1]);
   assert.deepStrictEqual([lbl(kids[0]), kids[0].description], ['whole file note', 'file note']);
-  mem['cft.comments'] = {};
-  mem['cft.notes'] = {};
+  // Entries are editable and deletable in place
+  kids = await provider.getChildren(items[0]);
+  assert.strictEqual(kids[0].contextValue, 'commententry');
+  await provider.updateEntry(kids[0], 'reworded');
+  assert.deepStrictEqual(mem['cft.comments']['working:f2.js'], [{ line: 1, endLine: 2, text: 'reworded' }]);
+  kids = await provider.getChildren((await provider.getCommentsView(repo))[1]);
+  await provider.updateEntry(kids[0], 'new note');
+  assert.strictEqual(mem['cft.notes']['working:f3.js'], 'new note');
+  await provider.deleteEntry(kids[0]);
+  assert.strictEqual(mem['cft.notes']['working:f3.js'], undefined);
+  kids = await provider.getChildren((await provider.getCommentsView(repo))[0]);
+  await provider.deleteEntry(kids[0]);
+  assert.strictEqual(mem['cft.comments']['working:f2.js'], undefined);
   items = await provider.getCommentsView(repo);
   assert.deepStrictEqual(items.map(lbl), ['No comments yet']);
 

@@ -766,19 +766,24 @@ class CommitTreeProvider {
     return data;
   }
 
-  // Comments mode: every note/comment the export would deliver, grouped by path.
+  // Comments mode: every stored note/comment (all of it goes into the export), grouped by path.
   async getCommentsView(root) {
-    const data = await this.summaryData(root, false);
     const groups = new Map();
+    const split = (key) => [key.slice(0, key.indexOf(':')), key.slice(key.indexOf(':') + 1)];
     const add = (p, entry) => groups.set(p, [...(groups.get(p) || []), entry]);
-    for (const d of data ? data.folders : []) add(d.path, { text: d.text, tag: 'folder note' });
-    for (const f of data ? data.files : []) {
-      if (f.note) add(f.path, { text: f.note, tag: 'file note' });
-      for (const c of f.comments || []) add(f.path, c);
+    for (const [key, text] of Object.entries(this.notes())) {
+      const rel = split(key)[1];
+      add(rel, { key, text, tag: rel.endsWith('/') ? 'folder note' : 'file note' });
     }
-    for (const c of data ? data.outside : []) {
-      const at = c.ref === 'working' ? 'working copy' : c.ref.slice(0, 7);
-      add(c.path, { ...c, tag: `${c.line ? '' : 'file note · '}outside · ${at}` });
+    for (const [key, list] of Object.entries(this.comments())) {
+      const [ref, rel] = split(key);
+      let content;
+      if (ref === 'working') {
+        content = await fs.promises.readFile(path.join(root, rel), 'utf8').catch(() => '');
+      } else {
+        content = await git(root, ['show', `${ref}:${rel}`]).catch(() => '');
+      }
+      for (const c of list) add(rel, { ...c, key, code: quoteLines(content, c.line, c.endLine) });
     }
     if (!groups.size) {
       const empty = new vscode.TreeItem('No comments yet', vscode.TreeItemCollapsibleState.None);
@@ -789,6 +794,7 @@ class CommitTreeProvider {
     return [...groups.entries()]
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([p, entries]) => {
+        entries.sort((a, b) => (a.line || 0) - (b.line || 0));
         const item = new vscode.TreeItem(p, vscode.TreeItemCollapsibleState.Expanded);
         item.contextValue = 'commentgroup';
         item.entries = entries;
@@ -798,9 +804,38 @@ class CommitTreeProvider {
       });
   }
 
+  // Edit a Comments-view entry in place: a line comment (matched by line) or a note.
+  async updateEntry(item, text) {
+    const e = item.entry;
+    if (e.line) {
+      const store = { ...this.comments() };
+      store[e.key] = store[e.key].map((c) => (c.line === e.line ? { ...c, text } : c));
+      await this.state.update('cft.comments', store);
+    } else {
+      await this.state.update('cft.notes', { ...this.notes(), [e.key]: text });
+    }
+    this.refresh();
+  }
+
+  async deleteEntry(item) {
+    const e = item.entry;
+    if (e.line) {
+      const store = { ...this.comments() };
+      store[e.key] = store[e.key].filter((c) => c.line !== e.line);
+      if (!store[e.key].length) delete store[e.key];
+      await this.state.update('cft.comments', store);
+    } else {
+      const notes = { ...this.notes() };
+      delete notes[e.key];
+      await this.state.update('cft.notes', notes);
+    }
+    this.refresh();
+  }
+
   commentEntryItem(p, e) {
     const item = new vscode.TreeItem(e.text.split('\n')[0], vscode.TreeItemCollapsibleState.None);
     item.contextValue = 'commententry';
+    item.entry = e;
     const span = e.line ? `L${e.line}${e.endLine ? '-' + e.endLine : ''}` : '';
     item.description = [span, e.tag].filter(Boolean).join(' · ');
     item.iconPath = new vscode.ThemeIcon(e.line ? 'comment' : 'note');
@@ -1305,6 +1340,35 @@ function activate(context) {
     thread.dispose();
   }
 
+  // Comments-view edits must also reach threads already shown in open editors.
+  function dropLiveThread(entry) {
+    const t = liveThreads.get(`${entry.key}:${entry.line}`);
+    if (t) t.dispose();
+    liveThreads.delete(`${entry.key}:${entry.line}`);
+  }
+
+  async function editEntry(item) {
+    if (!item || !item.entry) return;
+    const text = await vscode.window.showInputBox({
+      prompt: item.entry.line ? `Edit comment on ${item.description}` : 'Edit note',
+      value: item.entry.text,
+    });
+    if (!text) return; // cancelled or emptied — deleting is its own button
+    await provider.updateEntry(item, text);
+    if (item.entry.line) {
+      dropLiveThread(item.entry);
+      vscode.workspace.textDocuments.forEach(restoreThreads);
+    }
+  }
+
+  async function deleteEntry(item) {
+    if (!item || !item.entry) return;
+    const pick = await vscode.window.showWarningMessage(`Delete "${item.label}"?`, { modal: true }, 'Delete');
+    if (pick !== 'Delete') return;
+    await provider.deleteEntry(item);
+    if (item.entry.line) dropLiveThread(item.entry);
+  }
+
   // Re-create persisted threads when a matching document opens.
   function restoreThreads(document) {
     const loc = locOf(document.uri, provider.repoRoot);
@@ -1522,6 +1586,8 @@ function activate(context) {
     vscode.commands.registerCommand('commitFileTree.addComment', saveComment),
     vscode.commands.registerCommand('commitFileTree.deleteThread', deleteThread),
     vscode.commands.registerCommand('commitFileTree.exportSummary', exportSummary),
+    vscode.commands.registerCommand('commitFileTree.editEntry', editEntry),
+    vscode.commands.registerCommand('commitFileTree.deleteEntry', deleteEntry),
     vscode.commands.registerCommand('commitFileTree.viewComments', () => { setBack(undefined); provider.setMode('comments'); }),
     vscode.commands.registerCommand('commitFileTree.checkLastRound', checkLastRound),
     vscode.commands.registerCommand('commitFileTree.clearReviewData', clearReviewData),
