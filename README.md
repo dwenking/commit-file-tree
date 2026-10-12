@@ -16,12 +16,13 @@ After installing, open the **Source Control** sidebar (`Cmd/Ctrl+Shift+G`). The 
 ## Features
 
 ### See what the agent actually did
-- **Unpushed work first** — the list shows only local commits not yet on the remote (`@{upstream}..HEAD`), each with a `+adds −deletes` tag. Remote history stays out of the way behind "Show pushed history…".
+- **Unpushed work first** — the list shows only local commits not yet on the remote (`@{upstream}..HEAD`), each with a `+adds −deletes` tag. Remote history stays out of the way behind "Show pushed history…"; once shown, "Hide pushed history" sits right on the boundary between local and pushed commits.
 - **Working tree** — uncommitted changes (staged, unstaged, untracked) appear as a row above the commits, diffed against HEAD, so agent edits are reviewable before they are committed.
-- **Three view modes**, one click apart, with the active mode shown in the view header:
+- **Four view modes**, one click apart, with the active mode shown in the view header:
   - **By commits** — expand each commit into a real folder tree of its changes.
   - **Combined** — the *net* result of all unpushed commits as one tree, including uncommitted changes (uncheck **Include uncommitted changes** at the top of the tree for committed-only). Ideal when the agent made ten intermediate commits and you only care about the final state.
   - **By dependencies** — changed files organized by who imports whom (`↑N` = imported by N changed files), so you review foundations before their callers. Files with no relationships are grouped under "Standalone files". Heuristic import analysis for JS/TS/Vue/Svelte, Python, Java/Kotlin/Scala, Go, Rust, C/C++, C#, Ruby, PHP.
+  - **Comments** — everything you have written this round (line comments, file and folder notes), grouped by path. Hover for the quoted code and full text, click to jump to the line — so you never lose track of what you already said before exporting.
 - **Jump between modes per file** — spotted an interesting file in the commit or combined view? Right-click → **Reveal in Dependency View** switches modes, expands its import chain from the root, and selects it — instant answer to "what does this file sit on, and what sits on it?" without hunting through the tree.
 - **Scope-drift risk flags** — the classic agent failure is touching things you didn't ask about. Deletions, lockfiles, CI config, env files, and build config are flagged with ⚠ and a reason.
 - Native styling throughout: SCM status colors and badges, compact folders, blue dots for unpushed commits.
@@ -35,6 +36,6 @@ After installing, open the **Source Control** sidebar (`Cmd/Ctrl+Shift+G`). The 
 - Renames, added, deleted files, and root commits all open correct diffs.
 
 ### Close the loop with the agent
-- **Export review summary** — one click collects every line comment (with the quoted code), note, and flag into an action-item markdown report, copies it to the clipboard, and writes it to `.commit-review/latest.md` (configurable via `commitFileTree.exportPath`; kept out of git automatically). Paste it into the agent chat, or just tell the agent to read the file; it reads as instructions, not prose. Comments and notes on files outside the change set ("this file should change too") are included in their own section — nothing you write is dropped.
+- **Export review summary** — one click collects every line comment (with the quoted code), note, and flag into an action-item markdown report (icons and a count make the items easy to spot), copies it to the clipboard, and writes it to `.commit-review/latest.md` (configurable via `commitFileTree.exportPath`; kept out of git automatically). Paste it into the agent chat, or just tell the agent to read the file; it reads as instructions, not prose. Comments and notes on files outside the change set ("this file should change too") are included in their own section — nothing you write is dropped.
 - **Review rounds** — exporting archives the delivered comments and notes, so when the agent pushes new commits you review on a clean slate. Each round is kept as a timestamped file next to the latest one (`.commit-review/2026-09-24_1608.md`). The next export opens with a **Previous round** checklist: `[x]` the commented span changed since, `[ ]` untouched, `[?]` unknown — so you see at a glance what the agent skipped. Run "Check Last Round" from the command palette to see the same checklist mid-round. Archived rounds are restorable anytime via "Restore Last Archived Round" in the command palette (or the Undo button right after exporting); "Clear All Review Data" resets everything.
 - **Revert a commit** — right-click → revert (safe: creates an undo commit, after confirmation) when a change should simply not exist.

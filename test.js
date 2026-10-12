@@ -121,7 +121,8 @@ const cp = require('child_process');
   provider.loadMore();
   items = await provider.getCommits(repo);
   // history exhausted (1 < 50): no "show more", but a way back
-  assert.deepStrictEqual(items.map(lbl), ['c3', 'c2', 'c1', 'Hide pushed history']);
+  // hide sits on the boundary between local and pushed commits, not at the bottom
+  assert.deepStrictEqual(items.map(lbl), ['c3', 'c2', 'Hide pushed history', 'c1']);
 
   provider.hideHistory();
   items = await provider.getCommits(repo);
@@ -144,6 +145,21 @@ const cp = require('child_process');
   assert.strictEqual(items.find((i) => i.contextValue === 'dir').description, '📝');
   mem['cft.notes'] = {};
   sh('rm -r sub');
+
+  // Comments mode: one row per commented path, its notes/comments as children
+  mem['cft.comments'] = { 'working:f2.js': [{ line: 1, endLine: 2, text: 'fix this\nsecond line' }] };
+  mem['cft.notes'] = { 'working:f3.js': 'whole file note' };
+  items = await provider.getCommentsView(repo);
+  assert.deepStrictEqual(items.map(lbl), ['f2.js', 'f3.js']);
+  let kids = await provider.getChildren(items[0]);
+  assert.deepStrictEqual([lbl(kids[0]), kids[0].description], ['fix this', 'L1-2']);
+  assert.strictEqual(kids[0].command.command, 'vscode.open');
+  kids = await provider.getChildren(items[1]);
+  assert.deepStrictEqual([lbl(kids[0]), kids[0].description], ['whole file note', 'file note']);
+  mem['cft.comments'] = {};
+  mem['cft.notes'] = {};
+  items = await provider.getCommentsView(repo);
+  assert.deepStrictEqual(items.map(lbl), ['No comments yet']);
 
   // The checkbox row decides whether uncommitted files join the combined tree
   sh('echo x > local.txt');
@@ -341,8 +357,10 @@ const md = buildSummaryMd({
 });
 for (const expected of [
   '# Code review feedback (aaa..bbb)',
-  '### src/a.ts:42',
-  '### src/a.ts:50-53',
+  '## 🎯 Action items (3)',
+  '### 📝 src/a.ts',
+  '### 💬 src/a.ts:42',
+  '### 💬 src/a.ts:50-53',
   'extract this block',
   'const t = 5000;',
   'do not hardcode this',
@@ -385,10 +403,10 @@ const mdOutside = buildSummaryMd({
   ],
 });
 for (const expected of [
-  '## Comments outside this change',
-  '### src/config.ts:12 (working copy)',
+  '## 🌐 Comments outside this change',
+  '### 💬 src/config.ts:12 (working copy)',
   'this file should change too',
-  '### src/old.ts:3-5 (c0ffee1)',
+  '### 💬 src/old.ts:3-5 (c0ffee1)',
 ]) {
   assert.ok(mdOutside.includes(expected), `outside section missing: ${expected}`);
 }
@@ -433,13 +451,14 @@ const mdNoteOutside = buildSummaryMd({
   files: [],
   outside: [{ path: 'src/config.ts', ref: 'working', text: 'update this config too' }],
 });
-assert.ok(mdNoteOutside.includes('### src/config.ts (working copy · file note)'), 'note-outside heading missing');
+assert.ok(mdNoteOutside.includes('### 📝 src/config.ts (working copy · file note)'), 'note-outside heading missing');
 assert.ok(mdNoteOutside.includes('update this config too'));
 
 // Folder notes render as action items with a trailing-slash heading
 const mdFolder = buildSummaryMd({ rangeLabel: 'x..y', files: [], folders: [{ path: 'src/api/', text: 'split this module' }] });
-assert.ok(mdFolder.includes('## Action items'), 'folder note must be an action item');
-assert.ok(mdFolder.includes('### src/api/ (folder)\n\nsplit this module'), 'folder note heading missing');
+assert.ok(mdFolder.includes('## 🎯 Action items (1)'), 'folder note must be an action item');
+assert.ok(mdFolder.includes('### 📁 src/api/ (folder)\n\nsplit this module'), 'folder note heading missing');
+
 
 // Controller watchdog: Cursor's idle ext-host restart silently drops our
 // comment controller on the main thread. A poke that is never answered by a
@@ -556,10 +575,10 @@ assert.deepStrictEqual(hunkOldRanges('@@ -3,2 +3,4 @@\n-x\n+y\n@@ -10 +12 @@\n-a
   );
   // The export renders the previous round as a checklist above the new action items.
   const mdPrev = buildSummaryMd({ rangeLabel: 'r', files: [], previous: status });
-  assert.ok(mdPrev.includes('## Previous round') && !mdPrev.includes('No notes'));
-  assert.ok(mdPrev.includes('- [x] a.js:2 — rename this'));
-  assert.ok(mdPrev.includes('- [ ] a.js:4-5 — still wrong'));
-  assert.ok(mdPrev.includes('- [?] a.js:1 — no base'));
-  assert.ok(mdPrev.includes('- [x] b.js — rewrite file'));
+  assert.ok(mdPrev.includes('## 🔁 Previous round') && !mdPrev.includes('No notes'));
+  assert.ok(mdPrev.includes('- [x] ✅ a.js:2 — rename this'));
+  assert.ok(mdPrev.includes('- [ ] ⚠️ a.js:4-5 — still wrong'));
+  assert.ok(mdPrev.includes('- [?] ❓ a.js:1 — no base'));
+  assert.ok(mdPrev.includes('- [x] ✅ b.js — rewrite file'));
   fs.rmSync(repo, { recursive: true, force: true });
 })();

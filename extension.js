@@ -288,9 +288,9 @@ function buildSummaryMd(data) {
   const lines = [`# Code review feedback (${data.rangeLabel})`, ''];
   // Checklist of the last round: [x] changed since, [ ] untouched, [?] unknown.
   if (data.previous && data.previous.length) {
-    lines.push('## Previous round', '');
+    lines.push('## 🔁 Previous round', '');
     for (const p of data.previous) {
-      const box = p.addressed === null ? '[?]' : p.addressed ? '[x]' : '[ ]';
+      const box = p.addressed === null ? '[?] ❓' : p.addressed ? '[x] ✅' : '[ ] ⚠️';
       const loc = p.line ? `:${p.line}${p.endLine ? '-' + p.endLine : ''}` : '';
       lines.push(`- ${box} ${p.path}${loc} — ${p.text.split('\n')[0]}`);
     }
@@ -299,12 +299,13 @@ function buildSummaryMd(data) {
   const withFeedback = data.files.filter((f) => f.note || (f.comments && f.comments.length));
   const folders = data.folders || [];
   if (withFeedback.length || folders.length) {
-    lines.push('## Action items', '');
-    for (const d of folders) lines.push(`### ${d.path} (folder)`, '', d.text, '');
+    const count = withFeedback.reduce((n, f) => n + (f.note ? 1 : 0) + (f.comments || []).length, folders.length);
+    lines.push(`## 🎯 Action items (${count})`, '');
+    for (const d of folders) lines.push(`### 📁 ${d.path} (folder)`, '', d.text, '');
     for (const f of withFeedback) {
-      if (f.note) lines.push(`### ${f.path}`, '', f.note, '');
+      if (f.note) lines.push(`### 📝 ${f.path}`, '', f.note, '');
       for (const c of f.comments || []) {
-        lines.push(`### ${f.path}:${c.line}${c.endLine ? '-' + c.endLine : ''}`, '');
+        lines.push(`### 💬 ${f.path}:${c.line}${c.endLine ? '-' + c.endLine : ''}`, '');
         if (c.code) lines.push('```', c.code, '```');
         lines.push(c.text, '');
       }
@@ -313,11 +314,11 @@ function buildSummaryMd(data) {
   // Comments made on files/revisions outside the unpushed range still matter
   // (e.g. "this untouched file should change too") — never drop user input.
   if (data.outside && data.outside.length) {
-    lines.push('## Comments outside this change', '');
+    lines.push('## 🌐 Comments outside this change', '');
     for (const c of data.outside) {
       const at = c.ref === 'working' ? 'working copy' : c.ref.slice(0, 7);
       const loc = c.line ? `:${c.line}${c.endLine ? '-' + c.endLine : ''}` : '';
-      lines.push(`### ${c.path}${loc} (${at}${c.line ? '' : ' · file note'})`, '');
+      lines.push(`### ${c.line ? '💬' : '📝'} ${c.path}${loc} (${at}${c.line ? '' : ' · file note'})`, '');
       if (c.code) lines.push('```', c.code, '```');
       lines.push(c.text, '');
     }
@@ -441,7 +442,7 @@ class CommitTreeProvider {
     this.mode = mode;
     vscode.commands.executeCommand('setContext', 'commitFileTree.mode', mode);
     if (this.view) {
-      this.view.description = { commits: 'by commits', combined: 'combined', deps: 'by dependencies' }[mode];
+      this.view.description = { commits: 'by commits', combined: 'combined', deps: 'by dependencies', comments: 'comments' }[mode];
     }
     this.refresh();
   }
@@ -555,6 +556,7 @@ class CommitTreeProvider {
         this.updateBadge(root); // fire-and-forget
         if (this.mode === 'combined') return await this.getCombined(root);
         if (this.mode === 'deps') return await this.getDeps(root);
+        if (this.mode === 'comments') return await this.getCommentsView(root);
         return await this.getCommits(root);
       }
       if (element.contextValue === 'depfile') {
@@ -579,6 +581,9 @@ class CommitTreeProvider {
       }
       if (element.contextValue === 'worktree') {
         return this.getTreeNodes(buildTree(await this.workingTreeFiles(root)), CommitTreeProvider.WORKING_CTX);
+      }
+      if (element.contextValue === 'commentgroup') {
+        return element.entries.map((e) => this.commentEntryItem(element.label, e));
       }
       if (element.contextValue === 'dir') {
         return this.getTreeNodes(element.node, element.ctx);
@@ -657,6 +662,157 @@ class CommitTreeProvider {
       base = base || CommitTreeProvider.EMPTY_TREE;
     }
     return { base, target, keyRef: base };
+  }
+
+  // Everything the export and the comments view show: per-file notes/comments in the
+  // unpushed range, folder notes, and feedback outside the range. null = no range.
+  async summaryData(root, withPrevious) {
+    let ctx;
+    try {
+      ctx = await this.getUnpushedRange(root);
+    } catch (e) {
+      return null;
+    }
+    const files = parseNameStatus(await git(root, ['diff', '--name-status', ctx.base, ctx.target]));
+    const shas = (await git(root, ['rev-list', `${ctx.base}..${ctx.target}`])).split('\n').filter(Boolean);
+    const refs = new Set([...shas, ctx.base, ctx.target, 'working']);
+    const reviewed = this.reviewed();
+    const notes = this.notes();
+    const store = this.comments();
+    const data = {
+      rangeLabel:
+        ctx.base === ctx.target ? ctx.base.slice(0, 7) : `${ctx.base.slice(0, 7)}..${ctx.target.slice(0, 7)}`,
+      files: await Promise.all(
+        files.map(async (f) => {
+          const comments = [];
+          for (const [key, list] of Object.entries(store)) {
+            const [ref, rel] = [key.slice(0, key.indexOf(':')), key.slice(key.indexOf(':') + 1)];
+            if (rel !== f.path || !refs.has(ref)) continue;
+            let content;
+            for (const c of list) {
+              if (content === undefined && f.status !== 'D') {
+                content = await git(root, ['show', `${ctx.target}:${f.path}`]).catch(() => '');
+              }
+              comments.push({
+                line: c.line,
+                endLine: c.endLine,
+                text: c.text,
+                code: quoteLines(content, c.line, c.endLine),
+              });
+            }
+          }
+          comments.sort((a, b) => a.line - b.line);
+          // A file may be marked reviewed under one ref (commit view) and noted
+          // under another (combined view): look each up independently, and
+          // keep every note rather than the first ref's only.
+          const byRef = (map) => [...refs].map((r) => map[`${r}:${f.path}`]).filter(Boolean);
+          return {
+            path: f.path,
+            status: f.status,
+            risks: riskReasons(f),
+            reviewed: byRef(reviewed).length > 0,
+            note: byRef(notes).join('\n---\n') || undefined,
+            comments,
+          };
+        })
+      ),
+    };
+    // Comments and notes on files or revisions outside the unpushed range go
+    // in their own section — user feedback is never dropped.
+    const filePaths = new Set(files.map((f) => f.path));
+    data.outside = [];
+    data.folders = [];
+    for (const [key, text] of Object.entries(notes)) {
+      const idx = key.indexOf(':');
+      const ref = key.slice(0, idx);
+      const rel = key.slice(idx + 1);
+      if (filePaths.has(rel) && refs.has(ref)) continue; // already in action items
+      if (rel.endsWith('/') && refs.has(ref)) {
+        data.folders.push({ path: rel, text });
+        continue;
+      }
+      data.outside.push({ path: rel, ref, text });
+    }
+    for (const [key, list] of Object.entries(store)) {
+      const idx = key.indexOf(':');
+      const ref = key.slice(0, idx);
+      const rel = key.slice(idx + 1);
+      if (filePaths.has(rel) && refs.has(ref)) continue; // already in action items
+      let content;
+      if (ref === 'working') {
+        try {
+          content = fs.readFileSync(path.join(root, rel), 'utf8');
+        } catch (e) {
+          content = '';
+        }
+      } else {
+        content = await git(root, ['show', `${ref}:${rel}`]).catch(() => '');
+      }
+      for (const c of list) {
+        data.outside.push({
+          path: rel,
+          ref,
+          line: c.line,
+          endLine: c.endLine,
+          text: c.text,
+          code: quoteLines(content, c.line, c.endLine),
+        });
+      }
+    }
+    if (withPrevious) {
+      const rounds = this.state.get('cft.archive.rounds', []);
+      if (rounds.length) data.previous = await lastRoundStatus(root, rounds[rounds.length - 1]);
+    }
+    return data;
+  }
+
+  // Comments mode: every note/comment the export would deliver, grouped by path.
+  async getCommentsView(root) {
+    const data = await this.summaryData(root, false);
+    const groups = new Map();
+    const add = (p, entry) => groups.set(p, [...(groups.get(p) || []), entry]);
+    for (const d of data ? data.folders : []) add(d.path, { text: d.text, tag: 'folder note' });
+    for (const f of data ? data.files : []) {
+      if (f.note) add(f.path, { text: f.note, tag: 'file note' });
+      for (const c of f.comments || []) add(f.path, c);
+    }
+    for (const c of data ? data.outside : []) {
+      const at = c.ref === 'working' ? 'working copy' : c.ref.slice(0, 7);
+      add(c.path, { ...c, tag: `${c.line ? '' : 'file note · '}outside · ${at}` });
+    }
+    if (!groups.size) {
+      const empty = new vscode.TreeItem('No comments yet', vscode.TreeItemCollapsibleState.None);
+      empty.description = 'add line comments or 📝 notes in the other views';
+      empty.iconPath = new vscode.ThemeIcon('info');
+      return [empty];
+    }
+    return [...groups.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([p, entries]) => {
+        const item = new vscode.TreeItem(p, vscode.TreeItemCollapsibleState.Expanded);
+        item.contextValue = 'commentgroup';
+        item.entries = entries;
+        item.description = `${entries.length}`;
+        item.iconPath = p.endsWith('/') ? vscode.ThemeIcon.Folder : vscode.ThemeIcon.File;
+        return item;
+      });
+  }
+
+  commentEntryItem(p, e) {
+    const item = new vscode.TreeItem(e.text.split('\n')[0], vscode.TreeItemCollapsibleState.None);
+    item.contextValue = 'commententry';
+    const span = e.line ? `L${e.line}${e.endLine ? '-' + e.endLine : ''}` : '';
+    item.description = [span, e.tag].filter(Boolean).join(' · ');
+    item.iconPath = new vscode.ThemeIcon(e.line ? 'comment' : 'note');
+    const md = new vscode.MarkdownString();
+    if (e.code) md.appendMarkdown('```\n' + e.code + '\n```\n\n');
+    md.appendMarkdown(e.text.replace(/\n/g, '  \n'));
+    item.tooltip = md;
+    if (!p.endsWith('/')) {
+      const opts = e.line ? { selection: new vscode.Range(e.line - 1, 0, (e.endLine || e.line) - 1, 0) } : {};
+      item.command = { command: 'vscode.open', title: 'Open', arguments: [vscode.Uri.file(path.join(this.repoRoot, p)), opts] };
+    }
+    return item;
   }
 
   async getCombined(root) {
@@ -806,10 +962,16 @@ class CommitTreeProvider {
     if (historyLimit > 0) {
       history = parseLog(await git(root, ['log', `-${historyLimit}`, hasBase ? ctx.base : 'HEAD', '--shortstat', FORMAT]));
     }
-    const items = [
-      ...local.map((c) => this.commitItem(c, true)),
-      ...history.map((c) => this.commitItem(c, false)),
-    ];
+    const items = local.map((c) => this.commitItem(c, true));
+    // Hide sits on the boundary so it is visible without scrolling past the history.
+    if (this.extra > 0) {
+      const hide = new vscode.TreeItem('Hide pushed history', vscode.TreeItemCollapsibleState.None);
+      hide.iconPath = new vscode.ThemeIcon('fold-up');
+      hide.description = 'pushed commits below';
+      hide.command = { command: 'commitFileTree.hideHistory', title: 'Hide Pushed History' };
+      items.push(hide);
+    }
+    items.push(...history.map((c) => this.commitItem(c, false)));
     const dirty = await this.workingTreeFiles(root);
     if (dirty.length) {
       const wt = new vscode.TreeItem('Working tree', vscode.TreeItemCollapsibleState.Collapsed);
@@ -828,12 +990,6 @@ class CommitTreeProvider {
       more.description = hasBase ? 'commits already on the remote' : 'older commits';
       more.command = { command: 'commitFileTree.loadMore', title: 'Show Pushed History' };
       items.push(more);
-    }
-    if (this.extra > 0) {
-      const hide = new vscode.TreeItem('Hide pushed history', vscode.TreeItemCollapsibleState.None);
-      hide.iconPath = new vscode.ThemeIcon('fold-up');
-      hide.command = { command: 'commitFileTree.hideHistory', title: 'Hide Pushed History' };
-      items.push(hide);
     }
     return items;
   }
@@ -1207,101 +1363,11 @@ function activate(context) {
     // file and in the archive (restorable), so nothing is lost.
     const archiveAfter =
       Object.values(provider.comments()).some((l) => l.length) || Object.keys(provider.notes()).length > 0;
-    let ctx;
-    try {
-      ctx = await provider.getUnpushedRange(root);
-    } catch (e) {
+    const data = await provider.summaryData(root, true);
+    if (!data) {
       vscode.window.showWarningMessage('Commit Review Tree: no upstream branch — nothing to summarize.');
       return;
     }
-    const files = parseNameStatus(await git(root, ['diff', '--name-status', ctx.base, ctx.target]));
-    const shas = (await git(root, ['rev-list', `${ctx.base}..${ctx.target}`])).split('\n').filter(Boolean);
-    const refs = new Set([...shas, ctx.base, ctx.target, 'working']);
-    const reviewed = provider.reviewed();
-    const notes = provider.notes();
-    const store = provider.comments();
-    const data = {
-      rangeLabel:
-        ctx.base === ctx.target ? ctx.base.slice(0, 7) : `${ctx.base.slice(0, 7)}..${ctx.target.slice(0, 7)}`,
-      files: await Promise.all(
-        files.map(async (f) => {
-          const comments = [];
-          for (const [key, list] of Object.entries(store)) {
-            const [ref, rel] = [key.slice(0, key.indexOf(':')), key.slice(key.indexOf(':') + 1)];
-            if (rel !== f.path || !refs.has(ref)) continue;
-            let content;
-            for (const c of list) {
-              if (content === undefined && f.status !== 'D') {
-                content = await git(root, ['show', `${ctx.target}:${f.path}`]).catch(() => '');
-              }
-              comments.push({
-                line: c.line,
-                endLine: c.endLine,
-                text: c.text,
-                code: quoteLines(content, c.line, c.endLine),
-              });
-            }
-          }
-          comments.sort((a, b) => a.line - b.line);
-          // A file may be marked reviewed under one ref (commit view) and noted
-          // under another (combined view): look each up independently, and
-          // keep every note rather than the first ref's only.
-          const byRef = (map) => [...refs].map((r) => map[`${r}:${f.path}`]).filter(Boolean);
-          return {
-            path: f.path,
-            status: f.status,
-            risks: riskReasons(f),
-            reviewed: byRef(reviewed).length > 0,
-            note: byRef(notes).join('\n---\n') || undefined,
-            comments,
-          };
-        })
-      ),
-    };
-    // Comments and notes on files or revisions outside the unpushed range go
-    // in their own section — user feedback is never dropped.
-    const filePaths = new Set(files.map((f) => f.path));
-    data.outside = [];
-    data.folders = [];
-    for (const [key, text] of Object.entries(notes)) {
-      const idx = key.indexOf(':');
-      const ref = key.slice(0, idx);
-      const rel = key.slice(idx + 1);
-      if (filePaths.has(rel) && refs.has(ref)) continue; // already in action items
-      if (rel.endsWith('/') && refs.has(ref)) {
-        data.folders.push({ path: rel, text });
-        continue;
-      }
-      data.outside.push({ path: rel, ref, text });
-    }
-    for (const [key, list] of Object.entries(store)) {
-      const idx = key.indexOf(':');
-      const ref = key.slice(0, idx);
-      const rel = key.slice(idx + 1);
-      if (filePaths.has(rel) && refs.has(ref)) continue; // already in action items
-      let content;
-      if (ref === 'working') {
-        try {
-          content = fs.readFileSync(path.join(root, rel), 'utf8');
-        } catch (e) {
-          content = '';
-        }
-      } else {
-        content = await git(root, ['show', `${ref}:${rel}`]).catch(() => '');
-      }
-      for (const c of list) {
-        data.outside.push({
-          path: rel,
-          ref,
-          line: c.line,
-          endLine: c.endLine,
-          text: c.text,
-          code: quoteLines(content, c.line, c.endLine),
-        });
-      }
-    }
-    const rounds = provider.state.get('cft.archive.rounds', []);
-    if (rounds.length) data.previous = await lastRoundStatus(root, rounds[rounds.length - 1]);
     const md = buildSummaryMd(data);
     await vscode.env.clipboard.writeText(md);
     // Also write it where the agent can read it (empty setting = clipboard only).
@@ -1456,6 +1522,7 @@ function activate(context) {
     vscode.commands.registerCommand('commitFileTree.addComment', saveComment),
     vscode.commands.registerCommand('commitFileTree.deleteThread', deleteThread),
     vscode.commands.registerCommand('commitFileTree.exportSummary', exportSummary),
+    vscode.commands.registerCommand('commitFileTree.viewComments', () => { setBack(undefined); provider.setMode('comments'); }),
     vscode.commands.registerCommand('commitFileTree.checkLastRound', checkLastRound),
     vscode.commands.registerCommand('commitFileTree.clearReviewData', clearReviewData),
     vscode.commands.registerCommand('commitFileTree.restoreLastRound', restoreLastRound),

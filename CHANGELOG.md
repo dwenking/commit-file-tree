@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.18
+- New: Comments view, a fourth view mode (💬 in the title bar). Every line comment, file note, and folder note is listed by path; hover for the quoted code and full text, click to jump to the line. Updates live as you comment.
+- Export: the markdown is easier to scan, with icons and a count — `🎯 Action items (N)`, `💬` line comments, `📝` file notes, `📁` folder notes, `🔁 Previous round` with ✅ / ⚠️ / ❓, `🌐` comments outside the change.
+- "Hide pushed history" now sits between the local and the pushed commits instead of at the bottom of the list.
+
 ## 0.4.17
 - New: folder notes. Folder rows have the same Add/Edit Note button as files; a noted folder shows 📝, and the note is exported under Action items as `### path/ (folder)`.
 
