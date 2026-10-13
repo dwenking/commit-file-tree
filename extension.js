@@ -286,11 +286,11 @@ function quoteLines(content, line, endLine) {
 // data: {rangeLabel, files: [{path, status, risks, reviewed, note, comments: [{line, text, code}]}]}
 function buildSummaryMd(data) {
   const lines = [`# Code review feedback (${data.rangeLabel})`, ''];
-  // Checklist of the last round: [x] changed since, [ ] untouched, [?] unknown.
+  // Checklist of the last round: [x] changed since, [ ] untouched.
   if (data.previous && data.previous.length) {
     lines.push('## 🔁 Previous round', '');
     for (const p of data.previous) {
-      const box = p.addressed === null ? '[?] ❓' : p.addressed ? '[x] ✅' : '[ ] ⚠️';
+      const box = p.addressed ? '[x] ✅' : '[ ] ⏳';
       const loc = p.line ? `:${p.line}${p.endLine ? '-' + p.endLine : ''}` : '';
       lines.push(`- ${box} ${p.path}${loc} — ${p.text.split('\n')[0]}`);
     }
@@ -338,30 +338,37 @@ function hunkOldRanges(diff) {
   return ranges;
 }
 
-// For each comment/note of an archived round: did the agent touch it since?
-// addressed: true (span/file changed between its commit and HEAD), false
-// (unchanged), null (no stable base, e.g. working-copy comments).
+// For each comment/note of an exported round: has its code changed since?
+// addressed is true/false. Commit-based items diff their commit against the
+// working copy (so uncommitted fixes count) and check the commented span;
+// working-copy items have no commit to diff, so they count as changed when
+// the file was modified (or removed) after the export.
 async function lastRoundStatus(root, round) {
   const items = [];
   const split = (key) => [key.slice(0, key.indexOf(':')), key.slice(key.indexOf(':') + 1)];
-  const diffFor = async (ref, rel) => {
-    if (ref === 'working') return null;
-    return git(root, ['diff', '-U0', ref, 'HEAD', '--', rel]).catch(() => null);
+  const touchedSinceExport = async (rel) => {
+    try {
+      return (await fs.promises.stat(path.join(root, rel))).mtimeMs > (round.at || 0);
+    } catch (e) {
+      return true; // gone since the export
+    }
   };
+  const diffFor = (ref, rel) => git(root, ['diff', '-U0', ref, '--', rel]).catch(() => '');
   for (const [key, list] of Object.entries(round.comments || {})) {
     const [ref, rel] = split(key);
-    const diff = await diffFor(ref, rel);
-    const ranges = diff === null ? null : hunkOldRanges(diff);
+    const working = ref === 'working';
+    const ranges = working ? null : hunkOldRanges(await diffFor(ref, rel));
+    const touched = working ? await touchedSinceExport(rel) : null;
     for (const c of list) {
       const end = c.endLine || c.line;
-      const addressed = ranges === null ? null : ranges.some(([s, e]) => s <= end && e >= c.line);
+      const addressed = working ? touched : ranges.some(([s, e]) => s <= end && e >= c.line);
       items.push({ path: rel, line: c.line, endLine: c.endLine, text: c.text, addressed });
     }
   }
   for (const [key, text] of Object.entries(round.notes || {})) {
     const [ref, rel] = split(key);
-    const diff = await diffFor(ref, rel);
-    items.push({ path: rel, text, addressed: diff === null ? null : diff.trim().length > 0 });
+    const addressed = ref === 'working' ? await touchedSinceExport(rel) : (await diffFor(ref, rel)).trim().length > 0;
+    items.push({ path: rel, text, addressed });
   }
   return items;
 }
@@ -812,7 +819,7 @@ class CommitTreeProvider {
     this.refresh();
   }
 
-  // An exported round: read-only entries; the latest one carries ✅/⚠️/❓ status
+  // An exported round: read-only entries; the latest one carries ✅ changed / ⏳ unchanged status
   // (did the agent touch it since?). Older rounds skip the git diffs.
   async roundItem(root, round, n, latest) {
     const split = (key) => [key.slice(0, key.indexOf(':')), key.slice(key.indexOf(':') + 1)];
@@ -833,15 +840,17 @@ class CommitTreeProvider {
     const item = new vscode.TreeItem(`Round ${n} · ${when}`, vscode.TreeItemCollapsibleState.Collapsed);
     item.contextValue = 'round';
     item.iconPath = new vscode.ThemeIcon('export', new vscode.ThemeColor('charts.purple'));
-    const mark = (e) => (e.addressed === undefined ? '' : e.addressed === null ? '❓' : e.addressed ? '✅' : '⚠️');
+    const mark = (e) => (e.addressed === undefined ? '' : e.addressed ? '✅' : '⏳');
     const desc = [`${entries.length} item(s)`];
     if (latest) {
-      const tally = ['✅', '⚠️', '❓'].map((m) => [m, entries.filter((e) => mark(e) === m).length]);
+      const tally = ['✅', '⏳'].map((m) => [m, entries.filter((e) => mark(e) === m).length]);
       desc.push(tally.filter(([, k]) => k).map(([m, k]) => `${m}${k}`).join(' '));
     }
     item.description = desc.filter(Boolean).join(' · ');
+    const legend = latest ? '✅ code changed since export · ⏳ not changed yet' : '';
+    item.tooltip = legend || undefined;
     if (round.file) {
-      item.tooltip = `Exported to ${round.file} — click to open`;
+      item.tooltip = [`Exported to ${round.file} — click to open`, legend].filter(Boolean).join('\n');
       item.command = { command: 'vscode.open', title: 'Open', arguments: [vscode.Uri.file(path.join(root, round.file))] };
     }
     item.children = entries.map((e) => {

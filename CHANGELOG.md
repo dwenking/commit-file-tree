@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.25
+- Round status is now two marks: ✅ code changed since the export, ⏳ not changed yet (was ✅ / ⚠️ / ❓). Shown in the Comments view, with a legend on hover over the latest round, and in the export checklist (`[x] ✅` / `[ ] ⏳`).
+- Commit-based items are compared with the working copy, so uncommitted fixes count as changed. Items on uncommitted code (previously "unknown") count as changed when their file was modified after the export.
+
 ## 0.4.24
 - Fixed: a working-copy line comment was counted and listed twice (💬2, duplicate tooltip line) in the Combined view with uncommitted changes included, and in the Working tree row. Stored comments were never duplicated.
 

@@ -94,7 +94,7 @@ By commits、Combined、By dependencies 和 Comments，在标题栏一键切换�
 
 <h3>按轮次审查</h3>
 
-每次导出就是一轮。最新一轮用 ✅ / ⚠️ / ❓ 标出 agent 改了的、没动的、无法判断的条目。
+每次导出就是一轮。最新一轮把每条反馈标为 ✅（代码之后改过）或 ⏳（还没改）。
 
 </td>
 </tr>
@@ -136,7 +136,7 @@ By commits、Combined、By dependencies 和 Comments，在标题栏一键切换�
    把报告粘贴到 agent 对话里，或者直接让 agent 读这个文件。
 
 5. **检查**
-   在 **Comments** 视图里，最新一轮的每条反馈都会标为 ✅（之后改过）、⚠️（没动过）或 ❓（无法判断）。点击任意一条可跳到对应代码行。
+   在 **Comments** 视图里，最新一轮的每条反馈都会标为 ✅（导出后代码改过，无论是否已提交）或 ⏳（还没改）。点击任意一条可跳到对应代码行。
 
 ---
 
@@ -199,7 +199,7 @@ By commits、Combined、By dependencies 和 Comments，在标题栏一键切换�
 ## 🔁 Previous round
 
 - [x] ✅ src/api/client.ts:42 — do not hardcode the timeout
-- [ ] ⚠️ src/api/retry.ts — rewrite with backoff
+- [ ] ⏳ src/api/retry.ts — rewrite with backoff
 
 ## 🎯 Action items (3)
 
@@ -224,7 +224,7 @@ Revert the dependency bump.
 | 💬                              | 行评论，附引用的代码                               |
 | 📝                              | 文件备注                                           |
 | 📁                              | 文件夹备注                                         |
-| `[x] ✅` / `[ ] ⚠️` / `[?] ❓`  | 上一轮的条目：之后改过 / 没动过 / 没有可对比的基准 |
+| `[x] ✅` / `[ ] ⏳`             | 上一轮的条目：导出后代码改过 / 还没改              |
 | 🌐 Comments outside this change | 对未推送范围之外文件的反馈                         |
 
 ---

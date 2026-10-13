@@ -181,7 +181,7 @@ const cp = require('child_process');
   assert.strictEqual(mem['cft.comments']['working:f2.js'], undefined);
   assert.deepStrictEqual((await current()).map(lbl), ['No comments yet']);
 
-  // Exported rounds follow, newest first; only the latest gets ✅/⚠️/❓ status,
+  // Exported rounds follow, newest first; only the latest gets ✅/⏳ status,
   // and a round with a recorded file opens it on click
   mem['cft.archive.rounds'] = [
     { at: 1, comments: { 'working:f2.js': [{ line: 1, text: 'old ask' }] }, notes: {} },
@@ -189,11 +189,12 @@ const cp = require('child_process');
   ];
   items = await provider.getCommentsView(repo);
   assert.deepStrictEqual(items.map((i) => lbl(i).split(' ·')[0]), ['Current round', 'Round 2', 'Round 1']);
-  assert.ok(items[1].description.includes('❓1'), 'latest round status missing');
+  assert.ok(/✅1|⏳1/.test(items[1].description), 'latest round status missing');
   assert.strictEqual(items[1].command.command, 'vscode.open');
   assert.strictEqual(items[2].command, undefined); // older round without a file
   kids = await provider.getChildren(items[1]);
-  assert.deepStrictEqual([lbl(kids[0]), kids[0].description], ['latest ask', '❓ f3.js']);
+  assert.ok(['✅ f3.js', '⏳ f3.js'].includes(kids[0].description), 'latest round item mark missing');
+  assert.strictEqual(lbl(kids[0]), 'latest ask');
   kids = await provider.getChildren(items[2]);
   assert.deepStrictEqual([lbl(kids[0]), kids[0].description], ['old ask', 'f2.js:1']);
   // Archiving a round tucks it into a collapsed "Archived rounds" group; unarchive brings it back
@@ -614,15 +615,26 @@ assert.deepStrictEqual(hunkOldRanges('@@ -3,2 +3,4 @@\n-x\n+y\n@@ -10 +12 @@\n-a
   fs.writeFileSync(path.join(repo, 'a.js'), 'l1\nL2 fixed\nl3\nl4\nl5\n');
   fs.writeFileSync(path.join(repo, 'b.js'), 'changed\n');
   sh('git add . && git commit -qm c2');
+  // uncommitted fix counts too: d.js edited in the working copy only
+  fs.writeFileSync(path.join(repo, 'd.js'), 'old\n');
+  sh('git add d.js && git commit -qm c3');
+  const c3 = sh('git rev-parse HEAD');
+  fs.writeFileSync(path.join(repo, 'd.js'), 'new\n');
+  // working-copy items: changed = file modified after the export time
+  const at = Date.now();
+  fs.utimesSync(path.join(repo, 'b.js'), at / 1000 + 100, at / 1000 + 100);
+  fs.utimesSync(path.join(repo, 'c.js'), at / 1000 - 100, at / 1000 - 100);
   const round = {
+    at,
     comments: {
       [`${c1}:a.js`]: [
         { line: 2, text: 'rename this' },
         { line: 4, endLine: 5, text: 'still wrong' },
       ],
-      'working:a.js': [{ line: 1, text: 'no base' }],
+      [`${c3}:d.js`]: [{ line: 1, text: 'fix uncommitted' }],
+      'working:c.js': [{ line: 1, text: 'working, untouched' }],
     },
-    notes: { [`${c1}:b.js`]: 'rewrite file', [`${c1}:c.js`]: 'delete file' },
+    notes: { [`${c1}:b.js`]: 'rewrite file', [`${c1}:c.js`]: 'delete file', 'working:b.js': 'working, touched' },
   };
   const status = await lastRoundStatus(repo, round);
   assert.deepStrictEqual(
@@ -630,17 +642,19 @@ assert.deepStrictEqual(hunkOldRanges('@@ -3,2 +3,4 @@\n-x\n+y\n@@ -10 +12 @@\n-a
     [
       ['a.js', 2, true],
       ['a.js', 4, false],
-      ['a.js', 1, null],
+      ['d.js', 1, true],
+      ['c.js', 1, false],
       ['b.js', undefined, true],
       ['c.js', undefined, false],
+      ['b.js', undefined, true],
     ]
   );
   // The export renders the previous round as a checklist above the new action items.
   const mdPrev = buildSummaryMd({ rangeLabel: 'r', files: [], previous: status });
   assert.ok(mdPrev.includes('## 🔁 Previous round') && !mdPrev.includes('No notes'));
   assert.ok(mdPrev.includes('- [x] ✅ a.js:2 — rename this'));
-  assert.ok(mdPrev.includes('- [ ] ⚠️ a.js:4-5 — still wrong'));
-  assert.ok(mdPrev.includes('- [?] ❓ a.js:1 — no base'));
+  assert.ok(mdPrev.includes('- [ ] ⏳ a.js:4-5 — still wrong'));
+  assert.ok(!mdPrev.includes('[?]'), 'no third state any more');
   assert.ok(mdPrev.includes('- [x] ✅ b.js — rewrite file'));
   fs.rmSync(repo, { recursive: true, force: true });
 })();

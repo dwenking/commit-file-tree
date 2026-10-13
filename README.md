@@ -94,7 +94,7 @@ Every comment and note becomes an action-item markdown report — copied to the 
 
 <h3>Review rounds</h3>
 
-Each export becomes a round. The latest round shows a ✅ / ⚠️ / ❓ checklist of what the agent changed, left untouched, or can't be told.
+Each export becomes a round. The latest round marks every item ✅ (code changed since) or ⏳ (not changed yet).
 
 </td>
 </tr>
@@ -136,7 +136,7 @@ The extension is built around one loop: **review → comment → export → agen
    Paste the report into the agent chat, or tell the agent to read the file.
 
 5. **Check**
-   In the **Comments** view, the latest round lists every item as ✅ (changed since), ⚠️ (untouched), or ❓ (unknown). Click any item to jump to its line.
+   In the **Comments** view, the latest round marks every item ✅ (code changed since the export, committed or not) or ⏳ (not changed yet). Click any item to jump to its line.
 
 ---
 
@@ -199,7 +199,7 @@ The report reads as instructions, not prose. A shortened example:
 ## 🔁 Previous round
 
 - [x] ✅ src/api/client.ts:42 — do not hardcode the timeout
-- [ ] ⚠️ src/api/retry.ts — rewrite with backoff
+- [ ] ⏳ src/api/retry.ts — rewrite with backoff
 
 ## 🎯 Action items (3)
 
@@ -224,7 +224,7 @@ Revert the dependency bump.
 | 💬                            | Line comment, with the quoted code                                        |
 | 📝                            | File note                                                                 |
 | 📁                            | Folder note                                                               |
-| `[x] ✅` / `[ ] ⚠️` / `[?] ❓` | Previous-round item changed since / untouched / no stable base to compare |
+| `[x] ✅` / `[ ] ⏳`            | Previous-round item: code changed since the export / not changed yet      |
 | 🌐 Comments outside this change | Feedback on files outside the unpushed range                            |
 
 ---
