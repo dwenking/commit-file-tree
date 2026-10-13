@@ -136,6 +136,12 @@ const cp = require('child_process');
   assert.deepStrictEqual(items.slice(1).map((i) => i.label).sort(), ['f2.js', 'f3.js']);
   assert.strictEqual(items[1].command.command, 'commitFileTree.openDiff');
 
+  // A working-copy comment is counted once, even when the view itself targets the working copy
+  mem['cft.comments'] = { 'working:f2.js': [{ line: 1, text: 'once' }] };
+  items = await provider.getCombined(repo);
+  assert.strictEqual(items.find((i) => i.label === 'f2.js').description, '💬1');
+  mem['cft.comments'] = {};
+
   // Folder rows take notes keyed by path + '/', shown as a 📝 marker
   sh('mkdir -p sub && echo y > sub/a.txt');
   items = await provider.getCombined(repo);

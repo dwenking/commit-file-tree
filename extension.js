@@ -470,7 +470,8 @@ class CommitTreeProvider {
 
   commentsFor(ctx, filePath) {
     const store = this.comments();
-    return [ctx.target, ctx.base, 'working'].flatMap((ref) => store[`${ref}:${filePath}`] || []);
+    // Set: the target may itself be 'working' (working tree, combined with uncommitted changes).
+    return [...new Set([ctx.target, ctx.base, 'working'])].flatMap((ref) => store[`${ref}:${filePath}`] || []);
   }
 
   // Export ends a review round: move comments and notes into a per-round

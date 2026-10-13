@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.4.24
+- Fixed: a working-copy line comment was counted and listed twice (💬2, duplicate tooltip line) in the Combined view with uncommitted changes included, and in the Working tree row. Stored comments were never duplicated.
+
 ## 0.4.23
 - Docs: README rewritten — overview, comparison table, highlights, view-mode and command tables, export format, data and privacy, FAQ. Added a Simplified Chinese README (`README.zh-CN.md`, on GitHub).
 
