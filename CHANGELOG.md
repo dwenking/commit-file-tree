@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.4.23
+- Docs: README rewritten — overview, comparison table, highlights, view-mode and command tables, export format, data and privacy, FAQ. Added a Simplified Chinese README (`README.zh-CN.md`, on GitHub).
+
 ## 0.4.22
 - New: fuzzy file search in the Dependencies view. A "Search files…" row at the top (under the uncommitted-changes checkbox) opens a quick pick of every changed file; type part of a class or file name (or folder), pick one, and the view expands its import chain and selects it.
 
