@@ -13,6 +13,8 @@ Solo-maintained. Discrete feature requests go to GitHub Issues; this file holds 
 
 ## Shipped
 
+- 0.4.25 — Round status down to two marks: ✅ code changed since export / ⏳ not changed yet; compared against the working copy, so uncommitted fixes count.
+- 0.4.24 — Fix: working-copy comments counted twice when the view targets the working copy.
 - 0.4.23 — README restructured (overview, comparison, highlights, tables, FAQ); Simplified Chinese README on GitHub.
 - 0.4.22 — Dependencies view: "Search files…" row, fuzzy-find a changed file and reveal it.
 - 0.4.21 — Archive exported rounds into a collapsed group; "archive" wording now only means hiding a round.
