@@ -144,7 +144,7 @@ By commits、Combined、By dependencies 和 Comments，在标题栏一键切换�
 
 | 视图                | 显示内容                                                                                                                                         |
 | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **By commits**      | 每个未推送的提交都能展开成它自己的文件夹树。最上方的 **Working tree** 一行是未提交的改动。                                                      |
+| **By commits**      | 每个未推送的提交都能展开成它自己的文件夹树。最上方的 **Working tree** 一行是未提交的改动。用勾选框选择其他视图要审查哪些提交。                                                      |
 | **Combined**        | 所有未推送提交的*最终*结果合成一棵树。agent 提交了十次中间版本、你只关心最终结果时最合适。                                                       |
 | **By dependencies** | 按导入关系排列改动的文件（`↑N` 表示被 N 个改动文件导入），先审底层。没有任何导入关系的文件归入 "Standalone files"。**Search files…** 一行可按名称模糊查找任意文件。 |
 | **Comments**        | 按轮次的总览：最上面是可编辑的 **Current round**，下面是所有已导出的轮次，最新的在前。                                                          |
@@ -161,6 +161,7 @@ By commits、Combined、By dependencies 和 Comments，在标题栏一键切换�
 
 - **未推送的改动优先**：只显示还没推送到远端的本地提交（`@{upstream}..HEAD`）。远端历史收在 "Show pushed history…" 后面；展开后，"Hide pushed history" 就在本地提交和已推送提交的分界处。
 - **Working tree**：未提交的改动（已暂存、未暂存、未跟踪）作为一行显示在提交上方，与 HEAD 对比，agent 的改动在提交前就能审查。
+- **选择审查范围**：每个提交前都有勾选框。未推送的提交默认勾选；展开已推送的历史，勾选更早的提交，就会从那里开始审查（中间的提交会自动包含，范围始终连续）。Combined、By dependencies、Review All 和导出都按勾选的范围显示。Working tree 的勾选框就是 **Include uncommitted changes** 设置。顶部的 **Reset review range** 可回到只看未推送的提交。
 - **按文件在视图间跳转**：右键文件 → **Reveal in Dependency View**，会切换视图、从根部展开它的导入链并选中它。
 - **在依赖树里查找文件**：**Search files…** 一行会打开按类名或文件名的模糊搜索，无论文件藏在多深的折叠链里都能定位。
 - **越界改动标记**：删除、lockfile、CI 配置、env 文件、构建配置会带 ⚠ 和原因标出。
@@ -274,6 +275,7 @@ Revert the dependency bump.
 | Export Review Summary (copy for AI)             | 导出所有反馈，并开始新的一轮               |
 | Review All Changes                              | 在同一个多文件 diff 标签页里打开所有未推送改动 |
 | Refresh                                         | 刷新树                                     |
+| Commit Review Tree: Reset Review Range to Unpushed Commits | 取消勾选已推送的提交，只审查未推送的改动 |
 | Commit Review Tree: Restore Last Exported Round | 把上一个已导出的轮次放回当前轮             |
 | Commit Review Tree: Clear All Review Data       | 删除所有评论、备注、轮次和"已审"标记       |
 
@@ -301,7 +303,7 @@ Revert the dependency bump.
 <details>
 <summary><strong>Combined 视图显示的提交太多（或太少）。</strong></summary>
 
-"未推送"指上游分支之后的提交。没有上游分支时，插件依次退而使用：最近一个已在任意远端上的提交；与本地 `main`/`master` 的分叉点；整个历史。
+默认范围是未推送的提交；可以用提交前的勾选框扩大或缩小范围，用 **Reset review range** 恢复。"未推送"指上游分支之后的提交。没有上游分支时，插件依次退而使用：最近一个已在任意远端上的提交；与本地 `main`/`master` 的分叉点；整个历史。
 
 </details>
 

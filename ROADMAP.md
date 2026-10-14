@@ -8,11 +8,11 @@ Solo-maintained. Discrete feature requests go to GitHub Issues; this file holds 
 
 ## Next
 
-- Base-ref picker: review "since main" / "since tag" even after pushing.
 - `suggestion` blocks in the export that the agent can apply verbatim — only if plain comments prove too ambiguous for agents.
 
 ## Shipped
 
+- 0.4.26 — Review range picked with commit checkboxes (contiguous; pushed commits can be included), Working tree checkbox = include uncommitted changes. Replaces the planned base-ref picker.
 - 0.4.25 — Round status down to two marks: ✅ code changed since export / ⏳ not changed yet; compared against the working copy, so uncommitted fixes count.
 - 0.4.24 — Fix: working-copy comments counted twice when the view targets the working copy.
 - 0.4.23 — README restructured (overview, comparison, highlights, tables, FAQ); Simplified Chinese README on GitHub.

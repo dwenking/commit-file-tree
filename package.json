@@ -2,7 +2,7 @@
   "name": "commit-file-tree",
   "displayName": "Commit Review Tree",
   "description": "Review AI-generated commits like a PR: unpushed work as file trees (by commit, combined, or by dependencies), line comments, reviewed checkmarks, risk flags, and one-click export of feedback for your agent.",
-  "version": "0.4.25",
+  "version": "0.4.26",
   "publisher": "dwenking",
   "icon": "icon.png",
   "license": "MIT",
@@ -147,6 +147,10 @@
         "command": "commitFileTree.restoreLastRound",
         "title": "Commit Review Tree: Restore Last Exported Round",
         "icon": "$(history)"
+      },
+      {
+        "command": "commitFileTree.resetReviewRange",
+        "title": "Commit Review Tree: Reset Review Range to Unpushed Commits"
       }
     ],
     "menus": {

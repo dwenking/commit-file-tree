@@ -611,7 +611,7 @@ class CommitTreeProvider {
   async updateBadge(root) {
     if (!this.view) return;
     try {
-      const ctx = await this.getUnpushedRange(root);
+      const ctx = await this.getReviewRange(root);
       const files = parseNameStatus(await git(root, ['diff', '--name-status', ctx.base, ctx.target]));
       const reviewed = this.reviewed();
       // ponytail: a file counts as reviewed if marked under any ref (commit or combined scope)
@@ -641,6 +641,38 @@ class CommitTreeProvider {
 
   // Base for "what am I reviewing": upstream if set, else merge-base with a
   // local main branch, else the empty tree (whole repo counts as new work).
+  // What the combined/deps/export views review: the base picked with the commit
+  // checkboxes (cft.reviewBase), as long as it is still an ancestor of HEAD;
+  // otherwise the unpushed range.
+  async getReviewRange(root) {
+    const ctx = await this.getUnpushedRange(root);
+    const base = this.state.get('cft.reviewBase');
+    if (!base || base === ctx.base) return ctx;
+    if (base !== CommitTreeProvider.EMPTY_TREE) {
+      const ok = await git(root, ['merge-base', '--is-ancestor', base, 'HEAD']).then(() => true, () => false);
+      if (!ok) return ctx;
+    }
+    return { base, target: ctx.target, keyRef: base };
+  }
+
+  // Option A (contiguous): checking a commit moves the base to its parent, so it and
+  // everything newer is in range; unchecking moves the base to the commit itself.
+  async setCommitChecked(sha, checked) {
+    const root = this.repoRoot;
+    let base = sha;
+    if (checked) {
+      base = await git(root, ['rev-parse', `${sha}~1`]).then((o) => o.trim(), () => CommitTreeProvider.EMPTY_TREE);
+    }
+    const unpushed = (await this.getUnpushedRange(root)).base;
+    await this.state.update('cft.reviewBase', base === unpushed ? undefined : base);
+    this.refresh();
+  }
+
+  async resetReviewRange() {
+    await this.state.update('cft.reviewBase', undefined);
+    this.refresh();
+  }
+
   async getUnpushedRange(root) {
     const target = (await git(root, ['rev-parse', 'HEAD'])).trim();
     let base;
@@ -681,7 +713,7 @@ class CommitTreeProvider {
   async summaryData(root, withPrevious) {
     let ctx;
     try {
-      ctx = await this.getUnpushedRange(root);
+      ctx = await this.getReviewRange(root);
     } catch (e) {
       return null;
     }
@@ -959,7 +991,7 @@ class CommitTreeProvider {
   async getCombined(root) {
     let ctx;
     try {
-      ctx = await this.getUnpushedRange(root);
+      ctx = await this.getReviewRange(root);
     } catch (e) {
       const item = new vscode.TreeItem('No upstream branch', vscode.TreeItemCollapsibleState.None);
       item.description = 'combined view needs one — switch to commit view';
@@ -987,7 +1019,7 @@ class CommitTreeProvider {
   async getDeps(root) {
     let ctx, files;
     try {
-      ctx = await this.getUnpushedRange(root);
+      ctx = await this.getReviewRange(root);
     } catch (e) {
       const item = new vscode.TreeItem('No upstream branch', vscode.TreeItemCollapsibleState.None);
       item.description = 'dependency view needs one — switch to commit view';
@@ -1121,7 +1153,11 @@ class CommitTreeProvider {
     if (historyLimit > 0) {
       history = parseLog(await git(root, ['log', `-${historyLimit}`, hasBase ? ctx.base : 'HEAD', '--shortstat', FORMAT]));
     }
-    const items = local.map((c) => this.commitItem(c, true));
+    // Checkbox = in the review range (base..HEAD) that the other views show.
+    const review = await this.getReviewRange(root);
+    const rangeSpec = review.base === CommitTreeProvider.EMPTY_TREE ? 'HEAD' : `${review.base}..HEAD`;
+    const inRange = new Set((await git(root, ['rev-list', rangeSpec]).catch(() => '')).split('\n').filter(Boolean));
+    const items = local.map((c) => this.commitItem(c, true, inRange.has(c.sha)));
     // Hide sits on the boundary so it is visible without scrolling past the history.
     if (this.extra > 0) {
       const hide = new vscode.TreeItem('Hide pushed history', vscode.TreeItemCollapsibleState.None);
@@ -1130,11 +1166,13 @@ class CommitTreeProvider {
       hide.command = { command: 'commitFileTree.hideHistory', title: 'Hide Pushed History' };
       items.push(hide);
     }
-    items.push(...history.map((c) => this.commitItem(c, false)));
+    items.push(...history.map((c) => this.commitItem(c, false, inRange.has(c.sha))));
     const dirty = await this.workingTreeFiles(root);
     if (dirty.length) {
       const wt = new vscode.TreeItem('Working tree', vscode.TreeItemCollapsibleState.Collapsed);
       wt.contextValue = 'worktree';
+      // Same setting as the combined/deps "Include uncommitted changes" checkbox.
+      wt.checkboxState = this.includeLocal() ? vscode.TreeItemCheckboxState.Checked : vscode.TreeItemCheckboxState.Unchecked;
       wt.description = `${dirty.length} uncommitted`;
       wt.iconPath = new vscode.ThemeIcon('edit', new vscode.ThemeColor('charts.yellow'));
       wt.tooltip = 'Uncommitted changes (staged, unstaged, untracked) vs HEAD';
@@ -1142,6 +1180,14 @@ class CommitTreeProvider {
     }
     if (hasBase && local.length === 0 && this.extra === 0) {
       items.unshift(this.allPushedItem());
+    }
+    if (review.base !== ctx.base) {
+      const reset = new vscode.TreeItem('Reset review range', vscode.TreeItemCollapsibleState.None);
+      reset.contextValue = 'resetrange';
+      reset.iconPath = new vscode.ThemeIcon('discard');
+      reset.description = 'back to unpushed commits only';
+      reset.command = { command: 'commitFileTree.resetReviewRange', title: 'Reset Review Range' };
+      items.unshift(reset);
     }
     if (historyLimit === 0 || history.length === historyLimit) {
       const more = new vscode.TreeItem('Show pushed history…', vscode.TreeItemCollapsibleState.None);
@@ -1153,9 +1199,10 @@ class CommitTreeProvider {
     return items;
   }
 
-  commitItem(c, unpushed) {
+  commitItem(c, unpushed, checked) {
     const item = new vscode.TreeItem(c.subject, vscode.TreeItemCollapsibleState.Collapsed);
     item.contextValue = 'commit';
+    item.checkboxState = checked ? vscode.TreeItemCheckboxState.Checked : vscode.TreeItemCheckboxState.Unchecked;
     item.sha = c.sha;
     item.subject = c.subject;
     item.description = c.author;
@@ -1377,7 +1424,7 @@ function activate(context) {
         files = await provider.workingTreeFiles(root);
         title = 'Review working tree';
       } else {
-        ({ files, ctx } = await provider.rangeFiles(root, await provider.getUnpushedRange(root)));
+        ({ files, ctx } = await provider.rangeFiles(root, await provider.getReviewRange(root)));
         title = 'Review unpushed changes';
       }
     } catch (e) {
@@ -1619,12 +1666,15 @@ function activate(context) {
     updateArchiveContext();
   }
 
-  const view = vscode.window.createTreeView('commitFileTree', { treeDataProvider: provider });
+  // Manual: checking a commit row must not cascade into its file children.
+  const view = vscode.window.createTreeView('commitFileTree', { treeDataProvider: provider, manageCheckboxStateManually: true });
   provider.view = view;
   view.description = 'by commits';
   view.onDidChangeCheckboxState((e) => {
     for (const [item, state] of e.items) {
-      if (item.contextValue === 'includeLocal') provider.setIncludeLocal(state === vscode.TreeItemCheckboxState.Checked);
+      const on = state === vscode.TreeItemCheckboxState.Checked;
+      if (item.contextValue === 'includeLocal' || item.contextValue === 'worktree') provider.setIncludeLocal(on);
+      if (item.contextValue === 'commit') provider.setCommitChecked(item.sha, on);
     }
   });
 
@@ -1738,6 +1788,7 @@ function activate(context) {
       },
     }),
     vscode.commands.registerCommand('commitFileTree.refresh', () => provider.refresh()),
+    vscode.commands.registerCommand('commitFileTree.resetReviewRange', () => provider.resetReviewRange()),
     vscode.commands.registerCommand('commitFileTree.loadMore', () => provider.loadMore()),
     vscode.commands.registerCommand('commitFileTree.hideHistory', () => provider.hideHistory()),
     vscode.commands.registerCommand('commitFileTree.viewCombined', () => { setBack(undefined); provider.setMode('combined'); }),

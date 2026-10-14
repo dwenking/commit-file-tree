@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.26
+- New: pick the review range with checkboxes on commit rows. Unpushed commits are checked by default; check an older (pushed) commit to review from there — the commits in between are included, so the range stays contiguous — or uncheck one to narrow it. Combined, By dependencies, Review All, and the export follow the checked range; it is remembered per workspace and new local commits join it automatically. "Reset review range" (top row, or the command palette) returns to unpushed only.
+- The Working tree row has a checkbox too, checked by default: it is the same "Include uncommitted changes" setting as in the Combined and Dependencies views.
+
 ## 0.4.25
 - Round status is now two marks: ✅ code changed since the export, ⏳ not changed yet (was ✅ / ⚠️ / ❓). Shown in the Comments view, with a legend on hover over the latest round, and in the export checklist (`[x] ✅` / `[ ] ⏳`).
 - Commit-based items are compared with the working copy, so uncommitted fixes count as changed. Items on uncommitted code (previously "unknown") count as changed when their file was modified after the export.

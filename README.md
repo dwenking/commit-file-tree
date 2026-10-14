@@ -144,7 +144,7 @@ The extension is built around one loop: **review → comment → export → agen
 
 | Mode                | What it shows                                                                                                                                                                                                                         |
 | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **By commits**      | Each unpushed commit expands into a real folder tree of its changes. A **Working tree** row on top holds uncommitted changes.                                                                                                         |
+| **By commits**      | Each unpushed commit expands into a real folder tree of its changes. A **Working tree** row on top holds uncommitted changes. Checkboxes pick which commits the other views review.                                                 |
 | **Combined**        | The *net* result of all unpushed commits as one tree — ideal when the agent made ten intermediate commits and you only care about the final state.                                                                                     |
 | **By dependencies** | Changed files ordered by who imports whom (`↑N` = imported by N changed files), so you review foundations first. Files with no relationships go under "Standalone files". A **Search files…** row fuzzy-finds any file by name.   |
 | **Comments**        | A round-by-round overview: the editable **Current round**, then every exported round, newest first.                                                                                                                                   |
@@ -161,6 +161,7 @@ Dependency analysis is heuristic and covers JS/TS/Vue/Svelte, Python, Java/Kotli
 
 - **Unpushed work first** — only local commits not yet on the remote (`@{upstream}..HEAD`). Remote history stays behind "Show pushed history…"; once shown, "Hide pushed history" sits right on the boundary between local and pushed commits.
 - **Working tree** — uncommitted changes (staged, unstaged, untracked) appear as a row above the commits, diffed against HEAD, so agent edits are reviewable before they are committed.
+- **Pick the review range** — every commit row has a checkbox. Unpushed commits are checked by default; open the pushed history and check an older commit to review from there (the commits in between are included, so the range stays contiguous). Combined, By dependencies, Review All, and the export follow the checked range. The Working tree checkbox is the same **Include uncommitted changes** setting. **Reset review range** at the top returns to unpushed only.
 - **Jump between modes per file** — right-click a file → **Reveal in Dependency View** switches modes, expands its import chain from the root, and selects it.
 - **Find any file in the dependency tree** — the **Search files…** row opens a fuzzy search by class or file name and reveals the file, however deep its chain is collapsed.
 - **Scope-drift risk flags** — deletions, lockfiles, CI config, env files, and build config are flagged with ⚠ and a reason.
@@ -274,6 +275,7 @@ Title-bar buttons and command palette entries:
 | Export Review Summary (copy for AI)             | Export all feedback and start a new round                |
 | Review All Changes                              | Open every unpushed change in one multi-diff tab         |
 | Refresh                                         | Reload the tree                                          |
+| Commit Review Tree: Reset Review Range to Unpushed Commits | Uncheck pushed commits; review unpushed work only |
 | Commit Review Tree: Restore Last Exported Round | Move the last exported round back into the current round |
 | Commit Review Tree: Clear All Review Data       | Delete all comments, notes, rounds, and reviewed marks   |
 
@@ -301,7 +303,7 @@ The files are copies written for your agent; the extension never reads them back
 <details>
 <summary><strong>The combined view shows too many (or too few) commits.</strong></summary>
 
-"Unpushed" means commits since the upstream branch. Without an upstream, the extension uses the nearest commit that is on any remote, then the merge-base with a local `main`/`master`, then the whole history.
+By default the range is the unpushed commits; use the commit checkboxes to widen or narrow it, and **Reset review range** to go back. "Unpushed" means commits since the upstream branch. Without an upstream, the extension uses the nearest commit that is on any remote, then the merge-base with a local `main`/`master`, then the whole history.
 
 </details>
 

@@ -110,6 +110,11 @@ const cp = require('child_process');
   items = await provider.getCommits(repo);
   assert.deepStrictEqual(items.map(lbl), ['Working tree', 'c3', 'c2', 'Show pushed history…']);
   assert.strictEqual(items[0].contextValue, 'worktree');
+  // its checkbox is the shared "include uncommitted changes" setting, on by default
+  assert.strictEqual(items[0].checkboxState, 1);
+  await provider.setIncludeLocal(false);
+  assert.strictEqual((await provider.getCommits(repo))[0].checkboxState, 0);
+  await provider.setIncludeLocal(true);
   const wt = await provider.getChildren(items[0]);
   assert.deepStrictEqual(wt.map(lbl), ['f1', 'f9']);
   assert.strictEqual(wt[0].command.arguments[1], 'M');
@@ -128,6 +133,29 @@ const cp = require('child_process');
   provider.hideHistory();
   items = await provider.getCommits(repo);
   assert.deepStrictEqual(items.map(lbl), ['c3', 'c2', 'Show pushed history…']);
+
+  // Review range: commit rows carry checkboxes; local commits are checked by default
+  provider.loadMore();
+  const row = async (l) => (await provider.getCommits(repo)).find((i) => lbl(i) === l);
+  const checks = async () => Promise.all(['c3', 'c2', 'c1'].map(async (l) => (await row(l)).checkboxState));
+  assert.deepStrictEqual(await checks(), [1, 1, 0]);
+  // checking a pushed commit extends the range down to it (contiguous, option A)
+  await provider.setCommitChecked((await row('c1')).sha, true);
+  assert.deepStrictEqual(await checks(), [1, 1, 1]);
+  assert.strictEqual((await provider.getReviewRange(repo)).base, CommitTreeProvider.EMPTY_TREE); // c1 is the root
+  items = await provider.getCommits(repo);
+  assert.deepStrictEqual([lbl(items[0]), items[0].command.command], ['Reset review range', 'commitFileTree.resetReviewRange']);
+  provider.setMode('combined');
+  assert.ok((await provider.getCombined(repo)).some((i) => i.label === 'f1'), 'combined must follow the checked range');
+  // unchecking a commit narrows the range to the commits above it
+  await provider.setCommitChecked((await row('c2')).sha, false);
+  assert.deepStrictEqual(await checks(), [1, 0, 0]);
+  // reset returns to "unpushed only", and the reset row goes away
+  await provider.resetReviewRange();
+  assert.deepStrictEqual(await checks(), [1, 1, 0]);
+  assert.notStrictEqual(lbl((await provider.getCommits(repo))[0]), 'Reset review range');
+  provider.hideHistory();
+  provider.setMode('commits');
 
   // Combined mode: one tree for everything unpushed (f2.js, f3.js from c2/c3)
   provider.setMode('combined');
