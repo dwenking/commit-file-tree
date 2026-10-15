@@ -289,16 +289,6 @@ function quoteLines(content, line, endLine) {
 // data: {rangeLabel, files: [{path, status, risks, reviewed, note, comments: [{line, text, code}]}]}
 function buildSummaryMd(data) {
   const lines = [`# Code review feedback (${data.rangeLabel})`, ''];
-  // Checklist of the last round: [x] changed since, [ ] untouched.
-  if (data.previous && data.previous.length) {
-    lines.push('## 🔁 Previous round', '');
-    for (const p of data.previous) {
-      const box = p.addressed ? '[x] ✅' : '[ ] ⏳';
-      const loc = p.line ? `:${p.line}${p.endLine ? '-' + p.endLine : ''}` : '';
-      lines.push(`- ${box} ${p.path}${loc} — ${p.text.split('\n')[0]}`);
-    }
-    lines.push('');
-  }
   const withFeedback = data.files.filter((f) => f.note || (f.comments && f.comments.length));
   const folders = data.folders || [];
   if (withFeedback.length || folders.length) {
@@ -704,7 +694,7 @@ class CommitTreeProvider {
 
   // Everything the export and the comments view show: per-file notes/comments in the
   // unpushed range, folder notes, and feedback outside the range. null = no range.
-  async summaryData(root, withPrevious) {
+  async summaryData(root) {
     let ctx;
     try {
       ctx = await this.getReviewRange(root);
@@ -796,10 +786,6 @@ class CommitTreeProvider {
           code: quoteLines(content, c.line, c.endLine),
         });
       }
-    }
-    if (withPrevious) {
-      const rounds = this.state.get('cft.archive.rounds', []);
-      if (rounds.length) data.previous = await lastRoundStatus(root, rounds[rounds.length - 1]);
     }
     return data;
   }
@@ -1586,7 +1572,7 @@ function activate(context) {
     // file and in the archive (restorable), so nothing is lost.
     const archiveAfter =
       Object.values(provider.comments()).some((l) => l.length) || Object.keys(provider.notes()).length > 0;
-    const data = await provider.summaryData(root, true);
+    const data = await provider.summaryData(root);
     if (!data) {
       vscode.window.showWarningMessage('Commit Review Tree: no upstream branch — nothing to summarize.');
       return;

@@ -682,12 +682,7 @@ assert.deepStrictEqual(hunkOldRanges('@@ -3,2 +3,4 @@\n-x\n+y\n@@ -10 +12 @@\n-a
       ['b.js', undefined, true],
     ]
   );
-  // The export renders the previous round as a checklist above the new action items.
-  const mdPrev = buildSummaryMd({ rangeLabel: 'r', files: [], previous: status });
-  assert.ok(mdPrev.includes('## 🔁 Previous round') && !mdPrev.includes('No notes'));
-  assert.ok(mdPrev.includes('- [x] ✅ a.js:2 — rename this'));
-  assert.ok(mdPrev.includes('- [ ] ⏳ a.js:4-5 — still wrong'));
-  assert.ok(!mdPrev.includes('[?]'), 'no third state any more');
-  assert.ok(mdPrev.includes('- [x] ✅ b.js — rewrite file'));
+  // The export carries this round only; last-round status lives in the Comments view.
+  assert.ok(!buildSummaryMd({ rangeLabel: 'r', files: [], previous: status }).includes('Previous round'));
   fs.rmSync(repo, { recursive: true, force: true });
 })();

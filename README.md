@@ -184,7 +184,7 @@ Dependency analysis is heuristic and covers JS/TS/Vue/Svelte, Python, Java/Kotli
 ### Close the loop with the agent
 
 - **Export review summary** — collects every line comment (with the quoted code), note, and flag into an action-item report. Comments on files outside the change set ("this file should change too") get their own section — nothing you write is dropped.
-- **Review rounds** — exporting moves delivered feedback into an exported round and keeps a timestamped copy (`.commit-review/2026-09-24_1608.md`). The next export opens with a **Previous round** checklist.
+- **Review rounds** — exporting moves delivered feedback into an exported round and keeps a timestamped copy (`.commit-review/2026-09-24_1608.md`). The export carries this round's feedback only; the ✅ / ⏳ status of the last round is shown in the Comments view.
 - **Undo** — "Undo Export" on the toast, or "Restore Last Exported Round" from the command palette, brings the last round back into the current one.
 - **Revert a commit** — right-click → revert (creates an undo commit, after confirmation) when a change should simply not exist.
 
@@ -196,11 +196,6 @@ The report reads as instructions, not prose. A shortened example:
 
 ````markdown
 # Code review feedback (a1b2c3d..e4f5a6b)
-
-## 🔁 Previous round
-
-- [x] ✅ src/api/client.ts:42 — do not hardcode the timeout
-- [ ] ⏳ src/api/retry.ts — rewrite with backoff
 
 ## 🎯 Action items (3)
 
@@ -225,7 +220,6 @@ Revert the dependency bump.
 | 💬                            | Line comment, with the quoted code                                        |
 | 📝                            | File note                                                                 |
 | 📁                            | Folder note                                                               |
-| `[x] ✅` / `[ ] ⏳`            | Previous-round item: code changed since the export / not changed yet      |
 | 🌐 Comments outside this change | Feedback on files outside the unpushed range                            |
 
 ---

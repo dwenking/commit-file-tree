@@ -12,6 +12,7 @@ Solo-maintained. Discrete feature requests go to GitHub Issues; this file holds 
 
 ## Shipped
 
+- 0.4.29 — Export carries this round only; previous-round status stays in the Comments view.
 - 0.4.28 — Fix: dependency view listed a file once per import of the same target; edges are now deduplicated.
 - 0.4.27 — Removed the duplicate "Include uncommitted changes" row from Combined/Dependencies; the Working tree checkbox is the one control.
 - 0.4.26 — Review range picked with commit checkboxes (contiguous; pushed commits can be included), Working tree checkbox = include uncommitted changes. Replaces the planned base-ref picker.

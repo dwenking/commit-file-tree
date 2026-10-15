@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.4.29
+- Export (clipboard and file) now carries only this round's feedback: the "Previous round" checklist is no longer included. The ✅ / ⏳ status of the last round stays in the Comments view.
+
 ## 0.4.28
 - Fixed: in the Dependencies view, a file that imported the same changed file several times (e.g. a class plus its nested classes, or a static import) was listed once per import, and `↑N` counts were inflated. Each importing file now counts once.
 

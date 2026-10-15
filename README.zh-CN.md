@@ -184,7 +184,7 @@ By commits、Combined、By dependencies 和 Comments，在标题栏一键切换�
 ### 把反馈交还给 agent
 
 - **导出审查报告**：把所有行评论（附引用的代码）、备注和标记汇总成待办式报告。对改动范围之外的文件的评论（比如"这个文件也应该改"）会单独成节，你写的东西一条都不会丢。
-- **按轮次审查**：导出时，已交付的反馈会归入一个已导出的轮次，并保留一份带时间戳的副本（`.commit-review/2026-09-24_1608.md`）。下一次导出的报告会以 **Previous round** 清单开头。
+- **按轮次审查**：导出时，已交付的反馈会归入一个已导出的轮次，并保留一份带时间戳的副本（`.commit-review/2026-09-24_1608.md`）。导出的报告只包含本轮的反馈；上一轮的 ✅ / ⏳ 状态显示在 Comments 视图里。
 - **撤销**：导出后提示框里的 "Undo Export"，或命令面板里的 "Restore Last Exported Round"，会把上一轮放回当前轮。
 - **回滚提交**：右键 → revert（确认后创建一个撤销提交），用于根本不该存在的改动。
 
@@ -196,11 +196,6 @@ By commits、Combined、By dependencies 和 Comments，在标题栏一键切换�
 
 ````markdown
 # Code review feedback (a1b2c3d..e4f5a6b)
-
-## 🔁 Previous round
-
-- [x] ✅ src/api/client.ts:42 — do not hardcode the timeout
-- [ ] ⏳ src/api/retry.ts — rewrite with backoff
 
 ## 🎯 Action items (3)
 
@@ -225,7 +220,6 @@ Revert the dependency bump.
 | 💬                              | 行评论，附引用的代码                               |
 | 📝                              | 文件备注                                           |
 | 📁                              | 文件夹备注                                         |
-| `[x] ✅` / `[ ] ⏳`             | 上一轮的条目：导出后代码改过 / 还没改              |
 | 🌐 Comments outside this change | 对未推送范围之外文件的反馈                         |
 
 ---
