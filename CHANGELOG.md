@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.4.28
+- Fixed: in the Dependencies view, a file that imported the same changed file several times (e.g. a class plus its nested classes, or a static import) was listed once per import, and `↑N` counts were inflated. Each importing file now counts once.
+
 ## 0.4.27
 - Removed the "Include uncommitted changes" checkbox row from the Combined and Dependencies views. It duplicated the Working tree checkbox in the commits view, which is now the one control (same setting; your current choice is kept).
 

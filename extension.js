@@ -263,10 +263,13 @@ function buildEdges(sources) {
   const changedSet = new Set(sources.keys());
   const edges = [];
   for (const [file, source] of sources) {
+    // Set: several imports (class, static, nested) can resolve to the same file.
+    const targets = new Set();
     for (const spec of parseImports(file, source)) {
       const to = resolveImport(file, spec, changedSet);
-      if (to && to !== file) edges.push({ from: file, to });
+      if (to && to !== file) targets.add(to);
     }
+    for (const to of targets) edges.push({ from: file, to });
   }
   return edges;
 }

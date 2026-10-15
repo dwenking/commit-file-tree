@@ -423,6 +423,14 @@ const sources = new Map([
   ['src/b.ts', `export const b = 1;`],
 ]);
 assert.deepStrictEqual(buildEdges(sources), [{ from: 'src/a.ts', to: 'src/b.ts' }]);
+// Several imports resolving to the same changed file make one edge, not one per import
+assert.deepStrictEqual(
+  buildEdges(new Map([
+    ['src/A.java', 'import com.x.B;\nimport static com.x.B.helper;\nimport com.x.B.Inner;\n'],
+    ['src/com/x/B.java', 'package com.x;\n'],
+  ])),
+  [{ from: 'src/A.java', to: 'src/com/x/B.java' }]
+);
 
 // Summary export: action items with quoted code, plus the full file list
 const md = buildSummaryMd({
