@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.4.27
+- Removed the "Include uncommitted changes" checkbox row from the Combined and Dependencies views. It duplicated the Working tree checkbox in the commits view, which is now the one control (same setting; your current choice is kept).
+
 ## 0.4.26
 - New: pick the review range with checkboxes on commit rows. Unpushed commits are checked by default; check an older (pushed) commit to review from there — the commits in between are included, so the range stays contiguous — or uncheck one to narrow it. Combined, By dependencies, Review All, and the export follow the checked range; it is remembered per workspace and new local commits join it automatically. "Reset review range" (top row, or the command palette) returns to unpushed only.
 - The Working tree row has a checkbox too, checked by default: it is the same "Include uncommitted changes" setting as in the Combined and Dependencies views.

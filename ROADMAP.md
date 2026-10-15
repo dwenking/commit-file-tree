@@ -12,6 +12,7 @@ Solo-maintained. Discrete feature requests go to GitHub Issues; this file holds 
 
 ## Shipped
 
+- 0.4.27 — Removed the duplicate "Include uncommitted changes" row from Combined/Dependencies; the Working tree checkbox is the one control.
 - 0.4.26 — Review range picked with commit checkboxes (contiguous; pushed commits can be included), Working tree checkbox = include uncommitted changes. Replaces the planned base-ref picker.
 - 0.4.25 — Round status down to two marks: ✅ code changed since export / ⏳ not changed yet; compared against the working copy, so uncommitted fixes count.
 - 0.4.24 — Fix: working-copy comments counted twice when the view targets the working copy.

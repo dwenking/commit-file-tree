@@ -426,15 +426,6 @@ class CommitTreeProvider {
     this.refresh();
   }
 
-  includeLocalItem() {
-    const item = new vscode.TreeItem('Include uncommitted changes', vscode.TreeItemCollapsibleState.None);
-    item.contextValue = 'includeLocal';
-    item.checkboxState = this.includeLocal()
-      ? vscode.TreeItemCheckboxState.Checked
-      : vscode.TreeItemCheckboxState.Unchecked;
-    return item;
-  }
-
   loadMore() {
     this.extra += 50;
     this.refresh();
@@ -1000,10 +991,10 @@ class CommitTreeProvider {
     }
     const range = await this.rangeFiles(root, ctx);
     const nodes = range.files.length ? await this.getTreeNodes(buildTree(range.files), range.ctx) : [this.allPushedItem()];
-    return [this.includeLocalItem(), ...nodes];
+    return nodes;
   }
 
-  // Files of the unpushed range, honoring "Include uncommitted changes": when on,
+  // Files of the review range, honoring the Working tree checkbox (include uncommitted): when on,
   // diff the base against the working copy and retarget ctx at it.
   async rangeFiles(root, ctx) {
     if (this.includeLocal()) {
@@ -1027,7 +1018,7 @@ class CommitTreeProvider {
       return [item];
     }
     ({ files, ctx } = await this.rangeFiles(root, ctx));
-    if (!files.length) return [this.includeLocalItem(), this.allPushedItem()];
+    if (!files.length) return [this.allPushedItem()];
     const sources = new Map();
     for (const f of files) {
       if (f.status !== 'D' && ctx.target === 'working') {
@@ -1061,7 +1052,7 @@ class CommitTreeProvider {
     const connected = roots.filter((p) => (importers.get(p) || []).length);
     const grouped = connected.length > 0 && isolated.length > 0;
     this._deps = { ctx, importers, outEdges, grouped, isolated, meta: new Map(files.map((f) => [f.path, f])) };
-    const header = [this.includeLocalItem(), this.depSearchItem()];
+    const header = [this.depSearchItem()];
     if (!connected.length) return [...header, ...roots.map((p) => this.depItem(p, [p]))];
     const items = [...header, ...connected.map((p) => this.depItem(p, [p]))];
     if (grouped) items.push(this.depGroupItem());
@@ -1171,7 +1162,7 @@ class CommitTreeProvider {
     if (dirty.length) {
       const wt = new vscode.TreeItem('Working tree', vscode.TreeItemCollapsibleState.Collapsed);
       wt.contextValue = 'worktree';
-      // Same setting as the combined/deps "Include uncommitted changes" checkbox.
+      // The one control for including uncommitted changes in combined/deps/review-all.
       wt.checkboxState = this.includeLocal() ? vscode.TreeItemCheckboxState.Checked : vscode.TreeItemCheckboxState.Unchecked;
       wt.description = `${dirty.length} uncommitted`;
       wt.iconPath = new vscode.ThemeIcon('edit', new vscode.ThemeColor('charts.yellow'));
@@ -1673,7 +1664,7 @@ function activate(context) {
   view.onDidChangeCheckboxState((e) => {
     for (const [item, state] of e.items) {
       const on = state === vscode.TreeItemCheckboxState.Checked;
-      if (item.contextValue === 'includeLocal' || item.contextValue === 'worktree') provider.setIncludeLocal(on);
+      if (item.contextValue === 'worktree') provider.setIncludeLocal(on);
       if (item.contextValue === 'commit') provider.setCommitChecked(item.sha, on);
     }
   });

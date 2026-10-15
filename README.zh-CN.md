@@ -149,7 +149,7 @@ By commits、Combined、By dependencies 和 Comments，在标题栏一键切换�
 | **By dependencies** | 按导入关系排列改动的文件（`↑N` 表示被 N 个改动文件导入），先审底层。没有任何导入关系的文件归入 "Standalone files"。**Search files…** 一行可按名称模糊查找任意文件。 |
 | **Comments**        | 按轮次的总览：最上面是可编辑的 **Current round**，下面是所有已导出的轮次，最新的在前。                                                          |
 
-**Combined** 和 **By dependencies** 共用树顶部的 **Include uncommitted changes** 复选框（默认勾选）。取消勾选就只看已提交的改动。
+**Combined** 和 **By dependencies** 显示的内容在 **By commits** 视图里选择：提交前的勾选框决定范围，**Working tree** 的勾选框（默认勾选）决定是否包含未提交的改动。
 
 依赖分析基于启发式规则，支持 JS/TS/Vue/Svelte、Python、Java/Kotlin/Scala、Go、Rust、C/C++、C#、Ruby 和 PHP。
 
@@ -161,7 +161,7 @@ By commits、Combined、By dependencies 和 Comments，在标题栏一键切换�
 
 - **未推送的改动优先**：只显示还没推送到远端的本地提交（`@{upstream}..HEAD`）。远端历史收在 "Show pushed history…" 后面；展开后，"Hide pushed history" 就在本地提交和已推送提交的分界处。
 - **Working tree**：未提交的改动（已暂存、未暂存、未跟踪）作为一行显示在提交上方，与 HEAD 对比，agent 的改动在提交前就能审查。
-- **选择审查范围**：每个提交前都有勾选框。未推送的提交默认勾选；展开已推送的历史，勾选更早的提交，就会从那里开始审查（中间的提交会自动包含，范围始终连续）。Combined、By dependencies、Review All 和导出都按勾选的范围显示。Working tree 的勾选框就是 **Include uncommitted changes** 设置。顶部的 **Reset review range** 可回到只看未推送的提交。
+- **选择审查范围**：每个提交前都有勾选框。未推送的提交默认勾选；展开已推送的历史，勾选更早的提交，就会从那里开始审查（中间的提交会自动包含，范围始终连续）。Combined、By dependencies、Review All 和导出都按勾选的范围显示。Working tree 的勾选框决定是否包含未提交的改动。顶部的 **Reset review range** 可回到只看未推送的提交。
 - **按文件在视图间跳转**：右键文件 → **Reveal in Dependency View**，会切换视图、从根部展开它的导入链并选中它。
 - **在依赖树里查找文件**：**Search files…** 一行会打开按类名或文件名的模糊搜索，无论文件藏在多深的折叠链里都能定位。
 - **越界改动标记**：删除、lockfile、CI 配置、env 文件、构建配置会带 ⚠ 和原因标出。

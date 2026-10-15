@@ -160,9 +160,9 @@ const cp = require('child_process');
   // Combined mode: one tree for everything unpushed (f2.js, f3.js from c2/c3)
   provider.setMode('combined');
   items = await provider.getCombined(repo);
-  assert.strictEqual(items[0].contextValue, 'includeLocal');
-  assert.deepStrictEqual(items.slice(1).map((i) => i.label).sort(), ['f2.js', 'f3.js']);
-  assert.strictEqual(items[1].command.command, 'commitFileTree.openDiff');
+  // no checkbox row: the Working tree checkbox in the commits view is the only control
+  assert.deepStrictEqual(items.map((i) => i.label).sort(), ['f2.js', 'f3.js']);
+  assert.strictEqual(items[0].command.command, 'commitFileTree.openDiff');
 
   // A working-copy comment is counted once, even when the view itself targets the working copy
   mem['cft.comments'] = { 'working:f2.js': [{ line: 1, text: 'once' }] };
@@ -237,26 +237,23 @@ const cp = require('child_process');
   assert.deepStrictEqual(items.map((i) => lbl(i).split(' ·')[0]), ['Current round', 'Round 2', 'Round 1']);
   mem['cft.archive.rounds'] = [];
 
-  // The checkbox row decides whether uncommitted files join the combined tree
+  // The include-uncommitted setting (Working tree checkbox) decides whether uncommitted files join
   sh('echo x > local.txt');
   items = await provider.getCombined(repo);
   assert.ok(items.some((i) => i.label === 'local.txt'), 'checked: uncommitted file missing');
   await provider.setIncludeLocal(false);
   items = await provider.getCombined(repo);
-  assert.strictEqual(items[0].checkboxState, 0);
   assert.ok(!items.some((i) => i.label === 'local.txt'), 'unchecked: uncommitted file shown');
   await provider.setIncludeLocal(true);
   sh('rm local.txt');
 
   // Dependency mode: f3.js imports f2.js, so f2.js is the root and f3.js its child
   provider.setMode('deps');
-  // Same "Include uncommitted changes" checkbox row as the combined view
-  assert.strictEqual((await provider.getDeps(repo))[0].contextValue, 'includeLocal');
-  // ...followed by a search row that opens the fuzzy file finder
-  const search = (await provider.getDeps(repo))[1];
+  // First row: search, which opens the fuzzy file finder
+  const search = (await provider.getDeps(repo))[0];
   assert.deepStrictEqual([search.contextValue, search.command.command], ['depsearch', 'commitFileTree.findInDeps']);
   const deps = async () =>
-    (await provider.getDeps(repo)).filter((i) => !['includeLocal', 'depsearch'].includes(i.contextValue));
+    (await provider.getDeps(repo)).filter((i) => i.contextValue !== 'depsearch');
   sh('echo "require(\'./f2\')" > local.js');
   assert.ok((await deps()).length === 1 && (await provider.getChildren((await deps())[0])).some((i) => lbl(i) === 'local.js'),
     'checked: uncommitted importer missing');

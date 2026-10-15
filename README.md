@@ -149,7 +149,7 @@ The extension is built around one loop: **review → comment → export → agen
 | **By dependencies** | Changed files ordered by who imports whom (`↑N` = imported by N changed files), so you review foundations first. Files with no relationships go under "Standalone files". A **Search files…** row fuzzy-finds any file by name.   |
 | **Comments**        | A round-by-round overview: the editable **Current round**, then every exported round, newest first.                                                                                                                                   |
 
-**Combined** and **By dependencies** share an **Include uncommitted changes** checkbox at the top of the tree (on by default). Uncheck it to see committed changes only.
+What **Combined** and **By dependencies** show is picked in the **By commits** view: the commit checkboxes set the range, and the **Working tree** checkbox (on by default) decides whether uncommitted changes are included.
 
 Dependency analysis is heuristic and covers JS/TS/Vue/Svelte, Python, Java/Kotlin/Scala, Go, Rust, C/C++, C#, Ruby, and PHP.
 
@@ -161,7 +161,7 @@ Dependency analysis is heuristic and covers JS/TS/Vue/Svelte, Python, Java/Kotli
 
 - **Unpushed work first** — only local commits not yet on the remote (`@{upstream}..HEAD`). Remote history stays behind "Show pushed history…"; once shown, "Hide pushed history" sits right on the boundary between local and pushed commits.
 - **Working tree** — uncommitted changes (staged, unstaged, untracked) appear as a row above the commits, diffed against HEAD, so agent edits are reviewable before they are committed.
-- **Pick the review range** — every commit row has a checkbox. Unpushed commits are checked by default; open the pushed history and check an older commit to review from there (the commits in between are included, so the range stays contiguous). Combined, By dependencies, Review All, and the export follow the checked range. The Working tree checkbox is the same **Include uncommitted changes** setting. **Reset review range** at the top returns to unpushed only.
+- **Pick the review range** — every commit row has a checkbox. Unpushed commits are checked by default; open the pushed history and check an older commit to review from there (the commits in between are included, so the range stays contiguous). Combined, By dependencies, Review All, and the export follow the checked range. The Working tree checkbox includes or excludes uncommitted changes. **Reset review range** at the top returns to unpushed only.
 - **Jump between modes per file** — right-click a file → **Reveal in Dependency View** switches modes, expands its import chain from the root, and selects it.
 - **Find any file in the dependency tree** — the **Search files…** row opens a fuzzy search by class or file name and reveals the file, however deep its chain is collapsed.
 - **Scope-drift risk flags** — deletions, lockfiles, CI config, env files, and build config are flagged with ⚠ and a reason.
