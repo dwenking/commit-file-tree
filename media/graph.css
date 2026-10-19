@@ -125,22 +125,23 @@ vscode-tree-item[selected] > .checkbox {
   left: 8px;
   z-index: 10;
   box-sizing: border-box;
-  max-width: min(480px, calc(100vw - 16px));
+  max-width: min(360px, calc(100vw - 16px));
   overflow: hidden;
   pointer-events: none;
-  padding: 4px 8px;
+  padding: 3px 6px;
   border: 1px solid var(--vscode-editorHoverWidget-border);
   border-radius: 3px;
   background: var(--vscode-editorHoverWidget-background);
   color: var(--vscode-editorHoverWidget-foreground);
   box-shadow: 0 2px 8px var(--vscode-widget-shadow);
-  line-height: 19px;
+  font-size: 12px;
+  line-height: 16px;
 }
 .card vscode-icon {
   display: inline-block;
   vertical-align: text-bottom;
 }
-/* Short on room, only the message shrinks (faded); header, stats and badges stay. */
+/* The message shows at most 8 lines, fewer when short on room (faded); header, stats and badges stay. */
 .card:not([hidden]) {
   display: flex;
   flex-direction: column;
@@ -151,16 +152,17 @@ vscode-tree-item[selected] > .checkbox {
 .card > .message {
   flex: 0 1 auto;
   min-height: 0;
+  max-height: calc(8 * 16px);
   overflow: hidden;
-  margin: 4px 0;
+  margin: 2px 0;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
 .card > .message.clipped {
-  mask-image: linear-gradient(to bottom, #000 calc(100% - 19px), transparent);
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 16px), transparent);
 }
 .card hr {
-  margin: 4px -8px;
+  margin: 3px -6px;
   border: 0;
   border-top: 1px solid var(--vscode-editorHoverWidget-border);
 }

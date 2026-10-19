@@ -183,12 +183,11 @@ function showCard(id) {
   const item = rowOf(id);
   const c = cards.get(id);
   if (hovered !== id || dismissed || !item || !c) return;
-  const date = new Date(c.date).toLocaleString(undefined, { dateStyle: 'long', timeStyle: 'short' });
+  const date = new Date(c.date).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
   const author = el('strong', { title: c.email }, c.author);
   const parts = [el('div', {}, author, ', ', icon('history'), ` ${c.when} (${date})`), el('div', { class: 'message' }, c.message)];
   if (c.files) {
-    const stats = el('div', {}, `${plural(c.files, 'file')} changed, `, el('span', { class: 'ins' }, `${plural(c.ins, 'insertion')}(+)`));
-    stats.append(', ', el('span', { class: 'del' }, `${plural(c.del, 'deletion')}(-)`));
+    const stats = el('div', {}, `${plural(c.files, 'file')} changed, `, el('span', { class: 'ins' }, `+${c.ins}`), ' ', el('span', { class: 'del' }, `−${c.del}`));
     parts.push(el('hr', {}), stats);
   }
   // The row's own branch badges, so the card always matches the list.

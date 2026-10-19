@@ -2,6 +2,7 @@
 
 ## 0.4.33
 - Fix: switching between "By commits" and the other modes no longer resizes the view in the Source Control panel. All four modes now render in the same vscode-elements webview, so VS Code no longer swaps two views with separately remembered heights. Inline actions, right-click menus, checkboxes and Reveal in Dependency View work as before. Rows in Combined, By dependencies and Comments show generic file icons instead of your icon theme's, and comment tooltips are plain text.
+- The commit hover card is more compact: at most 360px wide, smaller text and spacing, at most 8 lines of message, and stats as `+25 −5`.
 
 ## 0.4.32
 - Fix: the commit hover card in "By commits" stayed open after a click and covered the files that opened under the commit. Clicking now closes it, and it stays closed until the pointer leaves that commit.
