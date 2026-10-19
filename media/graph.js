@@ -147,13 +147,14 @@ document.body.append(card);
 const cards = new Map();
 let hovered; // id of the commit row under the pointer
 let showTimer;
+let dismissed; // a click closes the card until the pointer leaves that row
 
 const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
 
 function showCard(id) {
   const item = rowOf(id);
   const c = cards.get(id);
-  if (hovered !== id || !item || !c) return;
+  if (hovered !== id || dismissed || !item || !c) return;
   const date = new Date(c.date).toLocaleString(undefined, { dateStyle: 'long', timeStyle: 'short' });
   const author = el('strong', { title: c.email }, c.author);
   const parts = [el('div', {}, author, ', ', icon('history'), ` ${c.when} (${date})`), el('div', { class: 'message' }, c.message)];
@@ -181,6 +182,7 @@ function showCard(id) {
 function hideCard() {
   clearTimeout(showTimer);
   hovered = undefined;
+  dismissed = false;
   card.hidden = true;
 }
 
@@ -193,6 +195,12 @@ tree.addEventListener('pointerover', (e) => {
   if (id) showTimer = setTimeout(() => (cards.has(id) ? showCard(id) : vscode.postMessage({ type: 'card', id })), 500);
 });
 tree.addEventListener('pointerleave', hideCard);
+// Clicking a commit expands its files right where the card sits, so get out of the way.
+tree.addEventListener('pointerdown', () => {
+  clearTimeout(showTimer);
+  dismissed = true;
+  card.hidden = true;
+});
 window.addEventListener('scroll', hideCard);
 
 // Expanding a row: remember it, and fetch lazy children the first time.

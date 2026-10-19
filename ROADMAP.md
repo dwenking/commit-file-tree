@@ -12,6 +12,7 @@ Solo-maintained. Discrete feature requests go to GitHub Issues; this file holds 
 
 ## Shipped
 
+- 0.4.32 — Fix: clicking a commit closes its hover card, which covered the files that opened under it.
 - 0.4.31 — Graph-style hover card on commits (author, dates, full message, stats, badges); covers the list and lets the pointer through, since a webview cannot draw beside it.
 - 0.4.30 — By commits looks like the Source Control Graph: blue/purple lanes, right-aligned branch badges (≤¼ row), compact rows. Webview built with vscode-elements, since native tree rows can hold neither.
 - 0.4.29 — Export carries this round only; previous-round status stays in the Comments view.
