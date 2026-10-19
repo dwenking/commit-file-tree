@@ -402,6 +402,8 @@ function gitUri(repoRoot, filePath, ref) {
 
 const NOOP_STATE = { get: (k, d) => d, update: async () => {} };
 
+const MODE_LABEL = { commits: 'by commits', combined: 'combined', deps: 'by dependencies', comments: 'comments' };
+
 class CommitTreeProvider {
   constructor(state) {
     this._onDidChangeTreeData = new vscode.EventEmitter();
@@ -439,9 +441,7 @@ class CommitTreeProvider {
   setMode(mode) {
     this.mode = mode;
     vscode.commands.executeCommand('setContext', 'commitFileTree.mode', mode);
-    if (this.view) {
-      this.view.description = { commits: 'by commits', combined: 'combined', deps: 'by dependencies', comments: 'comments' }[mode];
-    }
+    if (this.graphView) this.graphView.description = MODE_LABEL[mode];
     this.refresh();
   }
 
@@ -539,15 +539,6 @@ class CommitTreeProvider {
     this.refresh();
   }
 
-  getTreeItem(element) {
-    return element;
-  }
-
-  // Required by TreeView.reveal(); only dependency-mode items track parents.
-  getParent(element) {
-    return element.parentItem;
-  }
-
   async getChildren(element) {
     const root = this.repoRoot;
     if (!root) return [];
@@ -561,18 +552,10 @@ class CommitTreeProvider {
       }
       if (element.contextValue === 'depfile') {
         // once a chain is opened, show the whole subtree expanded
-        return element.depChildren.map((p) => {
-          const child = this.depItem(p, [...element.ancestry, p], true);
-          child.parentItem = element;
-          return child;
-        });
+        return element.depChildren.map((p) => this.depItem(p, [...element.ancestry, p], true));
       }
       if (element.contextValue === 'depgroup') {
-        return element.filesList.map((p) => {
-          const child = this.depItem(p, [p]);
-          child.parentItem = element;
-          return child;
-        });
+        return element.filesList.map((p) => this.depItem(p, [p]));
       }
       if (element.contextValue === 'commit') {
         const out = await git(root, ['show', '--format=', '--name-status', element.sha]);
@@ -599,10 +582,10 @@ class CommitTreeProvider {
   }
 
   // Rounded view-header badge: number of changed files not yet marked reviewed.
-  // Set on both the tree and the commit graph webview, whichever the mode shows.
   async updateBadge(root) {
-    const views = [this.view, this.graphView].filter(Boolean);
-    if (!views.length) return;
+    // Kept across the awaits: hiding the view disposes the webview and clears graphView.
+    const view = this.graphView;
+    if (!view) return;
     let badge;
     try {
       const ctx = await this.getReviewRange(root);
@@ -615,7 +598,7 @@ class CommitTreeProvider {
     } catch (e) {
       badge = undefined;
     }
-    for (const v of views) v.badge = badge;
+    view.badge = badge;
   }
 
   // git's well-known empty tree: lets local-only repos diff their entire history
@@ -1300,7 +1283,7 @@ const STATUS_COLOR = {
 };
 
 // Badge + color for a changed file's URI query (set by fileItem/getTreeNodes):
-// the native tree gets it through the FileDecorationProvider, the graph webview directly.
+// the webview colors the row and draws the badge itself.
 function statusDecoration(query) {
   const m = /^cftStatus=([A-Z])&rev=([01])$/.exec(query || '');
   if (!m) return undefined;
@@ -1315,14 +1298,17 @@ function statusDecoration(query) {
   };
 }
 
-// Plain-JSON rows for the commit graph webview, built from the same TreeItems the
-// native tree uses. byId maps row ids back to TreeItems for commands and children.
-// Folders arrive with their children; commits and the working tree load on expand.
+// Plain-JSON rows for the webview, built from the provider's TreeItems in every mode.
+// byId maps row ids back to TreeItems for commands and children. Expanded rows
+// (folders, comment groups, opened dependency chains) arrive with their children;
+// collapsed ones (commits, the working tree, dependency roots) load on expand.
 async function graphRows(provider, items, parentId, byId) {
   const rows = [];
   for (const item of items) {
     const label = typeof item.label === 'string' ? item.label : item.label.label;
-    const id = item.sha || `${parentId}/${label}`;
+    let id = item.sha || item.id || `${parentId}/${label}`;
+    // Same-label siblings (two comments with the same first line) need distinct ids.
+    for (let n = 2; byId.has(id) && byId.get(id) !== item; n++) id = `${parentId}/${label}#${n}`;
     byId.set(id, item);
     const icon = item.iconPath;
     const deco = item.resourceUri && statusDecoration(item.resourceUri.query);
@@ -1345,7 +1331,7 @@ async function graphRows(provider, items, parentId, byId) {
       refs: item.refs,
       deco: deco && { badge: deco.badge, color: deco.color.id },
     };
-    if (item.contextValue === 'dir') row.children = await graphRows(provider, await provider.getChildren(item), id, byId);
+    if (row.open) row.children = await graphRows(provider, await provider.getChildren(item), id, byId);
     rows.push(row);
   }
   return rows;
@@ -1740,24 +1726,25 @@ function activate(context) {
     updateArchiveContext();
   }
 
-  const view = vscode.window.createTreeView('commitFileTree', { treeDataProvider: provider });
-  provider.view = view;
-  view.description = 'by commits';
-
-  // "By commits" is a webview (package.json swaps it with the tree by mode): a native
-  // tree row cannot hold Graph lanes or right-aligned, width-capped ref badges.
-  // Rows come from the same TreeItems (graphRows); byId resolves them back for actions.
+  // Every mode renders in one webview: a native tree row cannot hold Graph lanes or
+  // right-aligned, width-capped ref badges, and swapping a tree and a webview by mode
+  // made the Source Control panel resize the view on every switch.
+  // Rows come from the provider's TreeItems (graphRows); byId resolves them back for actions.
   let byId = new Map();
   async function postGraph() {
     const wv = provider.graphView;
-    if (!wv || provider.mode !== 'commits') return;
-    byId = new Map();
-    wv.webview.postMessage({ type: 'root', rows: await graphRows(provider, await provider.getChildren(), '', byId) });
+    if (!wv) return;
+    const mode = provider.mode;
+    const ids = new Map();
+    const rows = await graphRows(provider, await provider.getChildren(), '', ids);
+    if (mode !== provider.mode) return; // a quicker switch already posted the newer mode
+    byId = ids;
+    wv.webview.postMessage({ type: 'root', rows });
   }
   const graphProvider = {
     resolveWebviewView(wv) {
       provider.graphView = wv;
-      wv.description = 'by commits';
+      wv.description = MODE_LABEL[provider.mode];
       const media = vscode.Uri.joinPath(context.extensionUri, 'media');
       wv.webview.options = { enableScripts: true, localResourceRoots: [media] };
       wv.webview.html = graphHtml(wv.webview, media);
@@ -1823,20 +1810,11 @@ function activate(context) {
       vscode.window.showInformationMessage('Commit Review Tree: file is not part of the unpushed change set.');
       return;
     }
+    // Row ids from the top of the chain down to the file; the webview opens each and selects the last.
     const { chain, inGroup } = provider.depChainFor(target);
-    let parent = inGroup ? provider.depGroupItem() : undefined;
-    let el = parent;
-    for (let i = 0; i < chain.length; i++) {
-      el = provider.depItem(chain[i], chain.slice(0, i + 1));
-      el.parentItem = parent;
-      parent = el;
-    }
-    try {
-      // expand: 3 is the API's maximum subtree depth
-      await view.reveal(el, { select: true, expand: 3, focus: true });
-    } catch (e) {
-      // reveal is best-effort; the mode switch alone already helps
-    }
+    const ids = chain.map((_, i) => provider.depItem(chain[i], chain.slice(0, i + 1)).id);
+    if (inGroup) ids.unshift(provider.depGroupItem().id);
+    if (provider.graphView) provider.graphView.webview.postMessage({ type: 'reveal', ids });
   }
 
   // Fuzzy-find a changed file by name (or path) and reveal it in the dependency tree,
@@ -1859,7 +1837,6 @@ function activate(context) {
   }
 
   context.subscriptions.push(
-    view,
     { dispose: () => controller.dispose() },
     selectionListener,
     focusListener,
@@ -1876,7 +1853,6 @@ function activate(context) {
     vscode.commands.registerCommand('commitFileTree.restoreLastRound', restoreLastRound),
     vscode.commands.registerCommand('commitFileTree.revealInDeps', revealInDeps),
     vscode.commands.registerCommand('commitFileTree.findInDeps', findInDeps),
-    vscode.window.registerFileDecorationProvider({ provideFileDecoration: (uri) => statusDecoration(uri.query) }),
     vscode.commands.registerCommand('commitFileTree.refresh', () => provider.refresh()),
     vscode.commands.registerCommand('commitFileTree.resetReviewRange', () => provider.resetReviewRange()),
     vscode.commands.registerCommand('commitFileTree.loadMore', () => provider.loadMore()),

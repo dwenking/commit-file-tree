@@ -12,6 +12,7 @@ Solo-maintained. Discrete feature requests go to GitHub Issues; this file holds 
 
 ## Shipped
 
+- 0.4.33 — Fix: the view no longer changes height when switching modes; every mode renders in the one webview instead of swapping a webview and a native tree.
 - 0.4.32 — Fix: clicking a commit closes its hover card, which covered the files that opened under it.
 - 0.4.31 — Graph-style hover card on commits (author, dates, full message, stats, badges); covers the list and lets the pointer through, since a webview cannot draw beside it.
 - 0.4.30 — By commits looks like the Source Control Graph: blue/purple lanes, right-aligned branch badges (≤¼ row), compact rows. Webview built with vscode-elements, since native tree rows can hold neither.

@@ -163,6 +163,14 @@ const cp = require('child_process');
   const card = await provider.commitCard(repo, byId.get(rows[0].id).commit);
   assert.deepStrictEqual([card.subject, card.author, card.email, card.message, card.files, card.ins], ['c3', 't', 't@t', 'c3', 1, 1]);
   assert.match(card.date, /^\d{4}-\d\d-\d\dT/);
+  // Same-label rows (two comments with the same first line) still get distinct ids.
+  const twins = await graphRows(provider, [new module.exports.TreeItem('same'), new module.exports.TreeItem('same')], '', new Map());
+  assert.notStrictEqual(twins[0].id, twins[1].id);
+  // The webview is disposed when the view is hidden; a badge update in flight must not throw.
+  provider.graphView = {};
+  const pending = provider.updateBadge(repo);
+  provider.graphView = undefined;
+  await pending;
 
   provider.hideHistory();
   items = await provider.getCommits(repo);
@@ -326,6 +334,12 @@ const cp = require('child_process');
   const mid = (await provider.getChildren(rootItem)).find((i) => lbl(i) === 'f3.js');
   assert.strictEqual(mid.collapsibleState, 2); // Expanded (has child f4.js)
   assert.deepStrictEqual(provider.depChainFor('f4.js').chain, ['f2.js', 'f3.js', 'f4.js']);
+  // One webview shows every mode: dependency rows keep their TreeItem ids (Reveal in
+  // Dependency View opens them by id), and expanded rows arrive with their children.
+  const depRows = await graphRows(provider, await provider.getChildren(rootItem), 'cft:dep:f2.js', new Map());
+  assert.deepStrictEqual(depRows.map((r) => [r.id, r.children && r.children.map((c) => c.id)]), [
+    ['cft:dep:f2.js|f3.js', ['cft:dep:f2.js|f3.js|f4.js']],
+  ]);
 
   // Local-only repo (no upstream): combined view falls back to the empty tree
   // and shows the whole history's net result instead of "No upstream branch"

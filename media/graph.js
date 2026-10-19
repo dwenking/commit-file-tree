@@ -1,17 +1,21 @@
-// Commit graph webview: renders the rows posted by the extension (graphRows in
-// extension.js) with vscode-elements' tree, and posts user actions back.
+// The view's webview, for every mode: renders the rows posted by the extension
+// (graphRows in extension.js) with vscode-elements' tree, and posts user actions back.
 const vscode = acquireVsCodeApi();
 const tree = document.querySelector('vscode-tree');
 // Expand state the user changed, by row id; survives refreshes and reloads.
 const state = vscode.getState() || { open: {} };
 
-// Inline (hover) actions, mirroring the tree's `view/item/context` inline menus.
+// Inline (hover) actions by row type (the TreeItem's contextValue).
 const ACTIONS = {
   commit: [['commitFileTree.reviewAll', 'diff-multiple', 'Review All Changes'], ['commitFileTree.revertCommit', 'discard', 'Revert This Commit']],
   worktree: [['commitFileTree.reviewAll', 'diff-multiple', 'Review All Changes']],
   file: [['commitFileTree.toggleReviewed', 'check', 'Toggle Reviewed'], ['commitFileTree.editNote', 'edit', 'Add/Edit Note']],
   dir: [['commitFileTree.editNote', 'edit', 'Add/Edit Note']],
+  commententry: [['commitFileTree.editEntry', 'edit', 'Edit'], ['commitFileTree.deleteEntry', 'trash', 'Delete']],
+  round: [['commitFileTree.archiveRound', 'archive', 'Archive Round']],
+  roundarchived: [['commitFileTree.unarchiveRound', 'reply', 'Unarchive Round']],
 };
+ACTIONS.depfile = ACTIONS.file;
 
 const color = (id) => `var(--vscode-${id.replace(/\./g, '-')})`;
 
@@ -66,7 +70,7 @@ function row(r, nested) {
     if (r.lane) item.append(el('span', { slot, class: `lane ${r.lane}` }));
     else if (r.icon === 'folder') item.append(icon(slot === 'icon-branch-opened' ? 'folder-opened' : 'folder', slot));
     else if (r.icon) item.append(icon(r.icon, slot, r.iconColor));
-    else if (r.context === 'file') item.append(icon('file', slot));
+    else if (r.context === 'file' || r.context === 'depfile') item.append(icon('file', slot));
   }
   if (r.checked !== undefined) item.append(checkbox(r));
   const label = el('span', { class: 'label' }, r.label);
@@ -93,7 +97,7 @@ function row(r, nested) {
     });
     item.append(btn);
   }
-  // Children: folders come filled in; commits and the working tree load on expand,
+  // Children: expanded rows come filled in; collapsed ones load on expand,
   // with a placeholder so the tree treats them as expandable.
   if (r.children) item.append(...r.children.map((c) => row(c, true)));
   else if (r.branch) {
@@ -113,10 +117,33 @@ function load(item) {
 const kids = (item) => item.querySelectorAll(':scope > vscode-tree-item');
 const rowOf = (id) => tree.querySelector(`vscode-tree-item[data-id="${CSS.escape(id)}"]`);
 
+// Reveal in Dependency View: open each row down the chain (collapsed ones load their
+// children first, so this resumes on every message), then select the last one.
+let reveal = [];
+function continueReveal() {
+  while (reveal.length) {
+    const item = rowOf(reveal[0]);
+    if (!item) return;
+    if (reveal.length > 1) {
+      item.setAttribute('open', '');
+      reveal.shift();
+      continue;
+    }
+    for (const s of tree.querySelectorAll('vscode-tree-item[selected]')) s.selected = false;
+    item.selected = true;
+    item.scrollIntoView({ block: 'nearest' });
+    reveal = [];
+  }
+}
+
 window.addEventListener('message', ({ data }) => {
+  if (data.type === 'reveal') reveal = data.ids;
   if (data.type === 'root') {
     const prev = new Map([...tree.querySelectorAll('vscode-tree-item[data-id]')].map((i) => [i.dataset.id, i]));
+    const selected = [...tree.querySelectorAll('vscode-tree-item[selected]')].map((i) => i.dataset.id);
     tree.replaceChildren(...data.rows.map((r) => row(r, false)));
+    // A refresh keeps the selection, like the native tree.
+    for (const id of selected) if (rowOf(id)) rowOf(id).selected = true;
     for (const item of tree.querySelectorAll('vscode-tree-item[open][data-lazy]')) {
       // Refresh: show the last-known files until fresh ones arrive, instead of "Loading…".
       const old = prev.get(item.dataset.id);
@@ -131,6 +158,7 @@ window.addEventListener('message', ({ data }) => {
     kids(item).forEach((c) => c.remove());
     item.append(...data.rows.map((r) => row(r, true)));
   }
+  continueReveal();
   if (data.type === 'card') {
     cards.set(data.id, data.card);
     showCard(data.id);
