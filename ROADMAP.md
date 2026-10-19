@@ -12,6 +12,7 @@ Solo-maintained. Discrete feature requests go to GitHub Issues; this file holds 
 
 ## Shipped
 
+- 0.4.30 — By commits looks like the Source Control Graph: blue/purple lanes, right-aligned branch badges (≤¼ row), compact rows. Webview built with vscode-elements, since native tree rows can hold neither.
 - 0.4.29 — Export carries this round only; previous-round status stays in the Comments view.
 - 0.4.28 — Fix: dependency view listed a file once per import of the same target; edges are now deduplicated.
 - 0.4.27 — Removed the duplicate "Include uncommitted changes" row from Combined/Dependencies; the Working tree checkbox is the one control.

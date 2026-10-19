@@ -1,0 +1,124 @@
+/* Commit graph webview. Colors are the Source Control Graph's theme colors
+   (charts.* fallbacks for editors that predate them); sizes follow its CSS. */
+:root {
+  --lane-local: var(--vscode-scmGraph-historyItemRefColor, var(--vscode-charts-blue));
+  --lane-remote: var(--vscode-scmGraph-historyItemRemoteRefColor, var(--vscode-charts-purple));
+  --lane-none: var(--vscode-descriptionForeground);
+}
+
+body {
+  padding: 0;
+}
+
+/* Lane: a vertical line through the row with the commit dot on it; consecutive
+   commit rows join into one line, like a Graph swimlane. Graph-narrow (14px)
+   instead of the tree's 22px icon slot. */
+vscode-tree-item[data-lane]::part(icon-container) {
+  min-width: 14px;
+  max-width: 14px;
+  margin-right: 2px;
+}
+.lane {
+  display: block;
+  position: relative;
+  width: 14px;
+  height: 22px;
+}
+.lane::before {
+  content: '';
+  position: absolute;
+  left: 6.5px;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--c);
+}
+.lane::after {
+  content: '';
+  position: absolute;
+  left: 3px;
+  top: 7px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--c);
+}
+.local {
+  --c: var(--lane-local);
+}
+.remote {
+  --c: var(--lane-remote);
+}
+.none {
+  --c: var(--lane-none);
+}
+
+/* Branch badges at the right edge; the group never takes more than a quarter
+   of the row, and long names truncate first. */
+.refs {
+  display: inline-flex;
+  gap: 4px;
+  max-width: 25vw;
+  min-width: 0;
+  overflow: hidden;
+}
+.ref {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 1 auto;
+  min-width: 0;
+  border-radius: 10px;
+  line-height: 18px;
+  background: var(--c);
+  color: var(--vscode-scmGraph-historyItemHoverLabelForeground, var(--vscode-button-foreground));
+}
+.ref vscode-icon {
+  flex: none;
+  padding: 2px;
+  color: inherit;
+}
+.ref .name {
+  font-size: 12px;
+  padding-right: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.status {
+  min-width: 12px;
+  text-align: center;
+}
+
+/* Same box as the native tree's checkbox (.custom-view-tree-node-item-checkbox):
+   16px, 13px codicon check, hidden when unchecked. */
+.codicon.checkbox {
+  flex: none;
+  box-sizing: border-box;
+  width: 16px;
+  height: 16px;
+  margin-right: 4px;
+  border: 1px solid var(--vscode-checkbox-border);
+  border-radius: 3px;
+  background-color: var(--vscode-checkbox-background);
+  color: var(--vscode-checkbox-foreground);
+  font-size: 13px;
+  line-height: 14px;
+  text-align: center;
+}
+.checkbox:not(.checked)::before {
+  visibility: hidden;
+}
+.checkbox:focus {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: -1px;
+}
+vscode-tree-item[selected] > .checkbox {
+  background-color: var(--vscode-checkbox-selectBackground, var(--vscode-checkbox-background));
+  border-color: var(--vscode-checkbox-selectBorder, var(--vscode-checkbox-border));
+}
+
+.pending {
+  font-style: italic;
+  opacity: 0.6;
+}

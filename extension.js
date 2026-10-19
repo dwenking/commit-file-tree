@@ -1,5 +1,6 @@
 const vscode = require('vscode');
 const cp = require('child_process');
+const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 
@@ -46,15 +47,21 @@ function buildTree(files) {
   return root;
 }
 
-// Parse `git log --format=%H%x09%h%x09%an%x09%ar%x09%s --shortstat` output.
+// Parse `git log --decorate=full --format=%H%x09%h%x09%an%x09%ar%x09%D%x09%s --shortstat` output.
 // Each commit is a tab-separated header line, optionally followed by a
-// "N files changed, X insertions(+), Y deletions(-)" line.
+// "N files changed, X insertions(+), Y deletions(-)" line. Branch refs become
+// Graph badges (local or remote); HEAD, */HEAD and tags are dropped.
 function parseLog(output) {
   const commits = [];
   for (const line of output.split('\n')) {
     if (/^[0-9a-f]{40}\t/.test(line)) {
-      const [sha, short, author, when, subject] = line.split('\t');
-      commits.push({ sha, short, author, when, subject, files: 0, ins: 0, del: 0 });
+      const [sha, short, author, when, decor, subject] = line.split('\t');
+      const refs = decor
+        .split(', ')
+        .map((r) => /^(?:HEAD -> )?refs\/(heads|remotes)\/(.+)$/.exec(r))
+        .filter((m) => m && !m[2].endsWith('/HEAD'))
+        .map((m) => ({ name: m[2], remote: m[1] === 'remotes' }));
+      commits.push({ sha, short, author, when, refs, subject, files: 0, ins: 0, del: 0 });
     } else if (commits.length && /\d+ files? changed/.test(line)) {
       const c = commits[commits.length - 1];
       c.files = Number((line.match(/(\d+) files? changed/) || [])[1] || 0);
@@ -592,8 +599,11 @@ class CommitTreeProvider {
   }
 
   // Rounded view-header badge: number of changed files not yet marked reviewed.
+  // Set on both the tree and the commit graph webview, whichever the mode shows.
   async updateBadge(root) {
-    if (!this.view) return;
+    const views = [this.view, this.graphView].filter(Boolean);
+    if (!views.length) return;
+    let badge;
     try {
       const ctx = await this.getReviewRange(root);
       const files = parseNameStatus(await git(root, ['diff', '--name-status', ctx.base, ctx.target]));
@@ -601,10 +611,11 @@ class CommitTreeProvider {
       // ponytail: a file counts as reviewed if marked under any ref (commit or combined scope)
       const done = new Set(Object.keys(reviewed).map((k) => k.slice(k.indexOf(':') + 1)));
       const left = files.filter((f) => !done.has(f.path)).length;
-      this.view.badge = left > 0 ? { value: left, tooltip: `${left} file(s) awaiting review` } : undefined;
+      badge = left > 0 ? { value: left, tooltip: `${left} file(s) awaiting review` } : undefined;
     } catch (e) {
-      this.view.badge = undefined;
+      badge = undefined;
     }
+    for (const v of views) v.badge = badge;
   }
 
   // git's well-known empty tree: lets local-only repos diff their entire history
@@ -1119,19 +1130,19 @@ class CommitTreeProvider {
   }
 
   async getCommits(root) {
-    const FORMAT = '--format=%H%x09%h%x09%an%x09%ar%x09%s';
+    const FORMAT = '--format=%H%x09%h%x09%an%x09%ar%x09%D%x09%s';
     // Local (unpushed) commits are the focus; remote history is behind "Show pushed history".
     // The base comes from getUnpushedRange so all views agree on what "unpushed" means.
     const ctx = await this.getUnpushedRange(root);
     const hasBase = ctx.base !== CommitTreeProvider.EMPTY_TREE;
     let local = [];
     if (hasBase) {
-      local = parseLog(await git(root, ['log', `${ctx.base}..HEAD`, '--shortstat', FORMAT]));
+      local = parseLog(await git(root, ['log', `${ctx.base}..HEAD`, '--shortstat', '--decorate=full', FORMAT]));
     }
     let history = [];
     const historyLimit = hasBase ? this.extra : this.extra + 50;
     if (historyLimit > 0) {
-      history = parseLog(await git(root, ['log', `-${historyLimit}`, hasBase ? ctx.base : 'HEAD', '--shortstat', FORMAT]));
+      history = parseLog(await git(root, ['log', `-${historyLimit}`, hasBase ? ctx.base : 'HEAD', '--shortstat', '--decorate=full', FORMAT]));
     }
     // Checkbox = in the review range (base..HEAD) that the other views show.
     const review = await this.getReviewRange(root);
@@ -1146,7 +1157,7 @@ class CommitTreeProvider {
       hide.command = { command: 'commitFileTree.hideHistory', title: 'Hide Pushed History' };
       items.push(hide);
     }
-    items.push(...history.map((c) => this.commitItem(c, false, inRange.has(c.sha))));
+    items.push(...history.map((c) => this.commitItem(c, false, inRange.has(c.sha), hasBase)));
     const dirty = await this.workingTreeFiles(root);
     if (dirty.length) {
       const wt = new vscode.TreeItem('Working tree', vscode.TreeItemCollapsibleState.Collapsed);
@@ -1179,16 +1190,17 @@ class CommitTreeProvider {
     return items;
   }
 
-  commitItem(c, unpushed, checked) {
+  // Lanes follow the Source Control Graph: local = unpushed, remote = already on
+  // the remote; history with no base at all has no lane color.
+  commitItem(c, unpushed, checked, pushed) {
     const item = new vscode.TreeItem(c.subject, vscode.TreeItemCollapsibleState.Collapsed);
     item.contextValue = 'commit';
+    item.lane = unpushed ? 'local' : pushed ? 'remote' : 'none';
+    item.refs = c.refs;
     item.checkboxState = checked ? vscode.TreeItemCheckboxState.Checked : vscode.TreeItemCheckboxState.Unchecked;
     item.sha = c.sha;
     item.subject = c.subject;
     item.description = c.author;
-    item.iconPath = unpushed
-      ? new vscode.ThemeIcon('git-commit', new vscode.ThemeColor('charts.blue'))
-      : new vscode.ThemeIcon('git-commit', new vscode.ThemeColor('descriptionForeground'));
     const md = new vscode.MarkdownString();
     md.appendMarkdown(`**${c.subject}**\n\n`);
     md.appendMarkdown(`${c.author}, ${c.when}${unpushed ? ' · *unpushed*' : ''}\n\n`);
@@ -1278,6 +1290,80 @@ const STATUS_COLOR = {
   R: 'gitDecoration.renamedResourceForeground',
   C: 'gitDecoration.addedResourceForeground',
 };
+
+// Badge + color for a changed file's URI query (set by fileItem/getTreeNodes):
+// the native tree gets it through the FileDecorationProvider, the graph webview directly.
+function statusDecoration(query) {
+  const m = /^cftStatus=([A-Z])&rev=([01])$/.exec(query || '');
+  if (!m) return undefined;
+  const [, status, rev] = m;
+  if (rev === '1') {
+    return { badge: '✓', color: new vscode.ThemeColor('gitDecoration.ignoredResourceForeground'), tooltip: 'Reviewed' };
+  }
+  return {
+    badge: status,
+    color: new vscode.ThemeColor(STATUS_COLOR[status] || 'foreground'),
+    tooltip: STATUS_LABEL[status] || status,
+  };
+}
+
+// Plain-JSON rows for the commit graph webview, built from the same TreeItems the
+// native tree uses. byId maps row ids back to TreeItems for commands and children.
+// Folders arrive with their children; commits and the working tree load on expand.
+async function graphRows(provider, items, parentId, byId) {
+  const rows = [];
+  for (const item of items) {
+    const label = typeof item.label === 'string' ? item.label : item.label.label;
+    const id = item.sha || `${parentId}/${label}`;
+    byId.set(id, item);
+    const icon = item.iconPath;
+    const deco = item.resourceUri && statusDecoration(item.resourceUri.query);
+    const tip = item.tooltip;
+    const row = {
+      id,
+      label,
+      description: item.description,
+      tooltip: typeof tip === 'string' ? tip : tip && tip.value.replace(/[*`]/g, ''),
+      icon: icon && icon.id,
+      iconColor: icon && icon.color && icon.color.id,
+      checked: item.checkboxState === undefined ? undefined : item.checkboxState === vscode.TreeItemCheckboxState.Checked,
+      branch: !!item.collapsibleState,
+      open: item.collapsibleState === vscode.TreeItemCollapsibleState.Expanded,
+      context: item.contextValue,
+      // data-vscode-context for right-click menus: the fields their commands read
+      ctx: JSON.parse(JSON.stringify({ sha: item.sha, subject: item.subject, filePath: item.filePath })),
+      run: !!item.command,
+      lane: item.lane,
+      refs: item.refs,
+      deco: deco && { badge: deco.badge, color: deco.color.id },
+    };
+    if (item.contextValue === 'dir') row.children = await graphRows(provider, await provider.getChildren(item), id, byId);
+    rows.push(row);
+  }
+  return rows;
+}
+
+// Commit graph page: vscode-elements' tree (vendored in media/) and codicons;
+// media/graph.js renders the rows posted by the extension.
+function graphHtml(webview, media) {
+  const src = (f) => webview.asWebviewUri(vscode.Uri.joinPath(media, f));
+  const nonce = crypto.randomBytes(16).toString('hex');
+  const csp = `default-src 'none'; font-src ${webview.cspSource}; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}'`;
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="${csp}">
+  <link rel="stylesheet" href="${src('codicon.css')}" id="vscode-codicon-stylesheet">
+  <link rel="stylesheet" href="${src('graph.css')}">
+</head>
+<body data-vscode-context='{"preventDefaultContextMenuItems": true}'>
+  <vscode-tree indent-guides="onHover" hide-arrows indent="16"></vscode-tree>
+  <script type="module" nonce="${nonce}" src="${src('vscode-elements.js')}"></script>
+  <script type="module" nonce="${nonce}" src="${src('graph.js')}"></script>
+</body>
+</html>`;
+}
 
 // Identify a document as (ref, repo-relative path), for comment storage.
 // git-scheme URIs carry {path, ref} in their query; file-scheme = working copy.
@@ -1646,17 +1732,48 @@ function activate(context) {
     updateArchiveContext();
   }
 
-  // Manual: checking a commit row must not cascade into its file children.
-  const view = vscode.window.createTreeView('commitFileTree', { treeDataProvider: provider, manageCheckboxStateManually: true });
+  const view = vscode.window.createTreeView('commitFileTree', { treeDataProvider: provider });
   provider.view = view;
   view.description = 'by commits';
-  view.onDidChangeCheckboxState((e) => {
-    for (const [item, state] of e.items) {
-      const on = state === vscode.TreeItemCheckboxState.Checked;
-      if (item.contextValue === 'worktree') provider.setIncludeLocal(on);
-      if (item.contextValue === 'commit') provider.setCommitChecked(item.sha, on);
-    }
-  });
+
+  // "By commits" is a webview (package.json swaps it with the tree by mode): a native
+  // tree row cannot hold Graph lanes or right-aligned, width-capped ref badges.
+  // Rows come from the same TreeItems (graphRows); byId resolves them back for actions.
+  let byId = new Map();
+  async function postGraph() {
+    const wv = provider.graphView;
+    if (!wv || provider.mode !== 'commits') return;
+    byId = new Map();
+    wv.webview.postMessage({ type: 'root', rows: await graphRows(provider, await provider.getChildren(), '', byId) });
+  }
+  const graphProvider = {
+    resolveWebviewView(wv) {
+      provider.graphView = wv;
+      wv.description = 'by commits';
+      const media = vscode.Uri.joinPath(context.extensionUri, 'media');
+      wv.webview.options = { enableScripts: true, localResourceRoots: [media] };
+      wv.webview.html = graphHtml(wv.webview, media);
+      wv.onDidDispose(() => (provider.graphView = undefined));
+      wv.webview.onDidReceiveMessage(async (m) => {
+        if (m.type === 'ready') return postGraph();
+        const item = byId.get(m.id);
+        if (!item) return;
+        if (m.type === 'children') {
+          const rows = await graphRows(provider, await provider.getChildren(item), m.id, byId);
+          wv.webview.postMessage({ type: 'children', id: m.id, rows });
+        }
+        // Commit checkboxes set the review range; the Working tree one includes uncommitted changes.
+        if (m.type === 'check' && item.contextValue === 'worktree') provider.setIncludeLocal(m.checked);
+        if (m.type === 'check' && item.contextValue === 'commit') provider.setCommitChecked(item.sha, m.checked);
+        if (m.type === 'run' && item.command) vscode.commands.executeCommand(item.command.command, ...(item.command.arguments || []));
+        if (m.type === 'action') vscode.commands.executeCommand(m.command, item);
+      });
+    },
+  };
+  context.subscriptions.push(
+    vscode.window.registerWebviewViewProvider('commitFileTree.graph', graphProvider),
+    provider.onDidChangeTreeData(postGraph)
+  );
 
   // Auto-refresh on commit, checkout, fetch, and push; debounce a burst into one refresh.
   (async () => {
@@ -1748,25 +1865,7 @@ function activate(context) {
     vscode.commands.registerCommand('commitFileTree.restoreLastRound', restoreLastRound),
     vscode.commands.registerCommand('commitFileTree.revealInDeps', revealInDeps),
     vscode.commands.registerCommand('commitFileTree.findInDeps', findInDeps),
-    vscode.window.registerFileDecorationProvider({
-      provideFileDecoration(uri) {
-        const m = /^cftStatus=([A-Z])&rev=([01])$/.exec(uri.query);
-        if (!m) return undefined;
-        const [, status, rev] = m;
-        if (rev === '1') {
-          return {
-            badge: '✓',
-            color: new vscode.ThemeColor('gitDecoration.ignoredResourceForeground'),
-            tooltip: 'Reviewed',
-          };
-        }
-        return {
-          badge: status,
-          color: new vscode.ThemeColor(STATUS_COLOR[status] || 'foreground'),
-          tooltip: STATUS_LABEL[status] || status,
-        };
-      },
-    }),
+    vscode.window.registerFileDecorationProvider({ provideFileDecoration: (uri) => statusDecoration(uri.query) }),
     vscode.commands.registerCommand('commitFileTree.refresh', () => provider.refresh()),
     vscode.commands.registerCommand('commitFileTree.resetReviewRange', () => provider.resetReviewRange()),
     vscode.commands.registerCommand('commitFileTree.loadMore', () => provider.loadMore()),
@@ -1831,4 +1930,5 @@ module.exports = {
   commentRangeFor,
   controllerWatchdog,
   CommitTreeProvider,
+  graphRows,
 };

@@ -2,7 +2,7 @@
   "name": "commit-file-tree",
   "displayName": "Commit Review Tree",
   "description": "Review AI-generated commits like a PR: unpushed work as file trees (by commit, combined, or by dependencies), line comments, reviewed checkmarks, risk flags, and one-click export of feedback for your agent.",
-  "version": "0.4.29",
+  "version": "0.4.30",
   "publisher": "dwenking",
   "icon": "icon.png",
   "license": "MIT",
@@ -18,14 +18,22 @@
   ],
   "main": "./extension.js",
   "activationEvents": [
-    "onView:commitFileTree"
+    "onView:commitFileTree",
+    "onView:commitFileTree.graph"
   ],
   "contributes": {
     "views": {
       "scm": [
         {
+          "type": "webview",
+          "id": "commitFileTree.graph",
+          "name": "Commit Review Tree",
+          "when": "!commitFileTree.mode || commitFileTree.mode == commits"
+        },
+        {
           "id": "commitFileTree",
-          "name": "Commit Review Tree"
+          "name": "Commit Review Tree",
+          "when": "commitFileTree.mode && commitFileTree.mode != commits"
         }
       ]
     },
@@ -162,32 +170,32 @@
         },
         {
           "command": "commitFileTree.viewByCommits",
-          "when": "view == commitFileTree",
+          "when": "view =~ /^commitFileTree/",
           "group": "navigation@1"
         },
         {
           "command": "commitFileTree.viewCombined",
-          "when": "view == commitFileTree",
+          "when": "view =~ /^commitFileTree/",
           "group": "navigation@2"
         },
         {
           "command": "commitFileTree.viewByDeps",
-          "when": "view == commitFileTree",
+          "when": "view =~ /^commitFileTree/",
           "group": "navigation@3"
         },
         {
           "command": "commitFileTree.viewComments",
-          "when": "view == commitFileTree",
+          "when": "view =~ /^commitFileTree/",
           "group": "navigation@4"
         },
         {
           "command": "commitFileTree.exportSummary",
-          "when": "view == commitFileTree",
+          "when": "view =~ /^commitFileTree/",
           "group": "navigation@5"
         },
         {
           "command": "commitFileTree.refresh",
-          "when": "view == commitFileTree",
+          "when": "view =~ /^commitFileTree/",
           "group": "navigation@6"
         }
       ],
@@ -203,6 +211,28 @@
           "command": "commitFileTree.deleteThread",
           "when": "commentController == commitFileTree && commentThread == saved",
           "group": "navigation"
+        }
+      ],
+      "webview/context": [
+        {
+          "command": "commitFileTree.copySha",
+          "when": "webviewId == 'commitFileTree.graph' && webviewSection == commit",
+          "group": "1_copy@1"
+        },
+        {
+          "command": "commitFileTree.copyMessage",
+          "when": "webviewId == 'commitFileTree.graph' && webviewSection == commit",
+          "group": "1_copy@2"
+        },
+        {
+          "command": "commitFileTree.revertCommit",
+          "when": "webviewId == 'commitFileTree.graph' && webviewSection == commit",
+          "group": "2_danger"
+        },
+        {
+          "command": "commitFileTree.revealInDeps",
+          "when": "webviewId == 'commitFileTree.graph' && webviewSection == file",
+          "group": "1_nav"
         }
       ],
       "view/item/context": [

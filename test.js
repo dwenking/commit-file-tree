@@ -6,7 +6,7 @@ Module._resolveFilename = function (request, ...args) {
   if (request === 'vscode') return __filename;
   return origResolve.call(this, request, ...args);
 };
-module.exports.Uri = { file: () => ({ with: () => ({}) }) };
+module.exports.Uri = { file: () => ({ with: (o) => ({ ...o }) }) };
 module.exports.EventEmitter = class {
   fire() {}
 };
@@ -18,13 +18,25 @@ module.exports.TreeItem = class {
 };
 module.exports.TreeItemCollapsibleState = { None: 0, Collapsed: 1, Expanded: 2 };
 module.exports.TreeItemCheckboxState = { Unchecked: 0, Checked: 1 };
-module.exports.ThemeIcon = class {};
-module.exports.ThemeIcon.Folder = {};
+module.exports.ThemeIcon = class {
+  constructor(id, color) {
+    this.id = id;
+    this.color = color;
+  }
+};
+module.exports.ThemeIcon.Folder = new module.exports.ThemeIcon('folder');
 module.exports.workspace = { workspaceFolders: undefined };
 module.exports.commands = { executeCommand: () => {} };
-module.exports.ThemeColor = class {};
+module.exports.ThemeColor = class {
+  constructor(id) {
+    this.id = id;
+  }
+};
 module.exports.MarkdownString = class {
-  appendMarkdown() {}
+  value = '';
+  appendMarkdown(s) {
+    this.value += s;
+  }
 };
 module.exports.Range = class {
   constructor(sl, sc, el, ec) {
@@ -50,15 +62,18 @@ assert.deepStrictEqual(tree.files.map((f) => f.name).sort(), ['README.md', 'new.
 assert.deepStrictEqual([...tree.dirs.get('src').dirs.keys()], ['a']);
 assert.strictEqual(tree.dirs.get('src').dirs.get('a').files[0].path, 'src/a/one.js');
 
-// parseLog: header + shortstat pairs, including a stat-less (empty) commit
+// parseLog: header + shortstat pairs, including a stat-less (empty) commit.
+// Branch refs (%D, --decorate=full) become Graph badges, local or remote;
+// HEAD, origin/HEAD and tags are dropped.
 const sha1 = 'a'.repeat(40);
 const sha2 = 'b'.repeat(40);
+const decor = 'HEAD -> refs/heads/main, refs/remotes/origin/main, refs/remotes/origin/HEAD, tag: refs/tags/v1';
 const log = parseLog(
-  `${sha1}\ta1\tAlice\t2 days ago\tfix: bug\n\n 3 files changed, 10 insertions(+), 2 deletions(-)\n${sha2}\tb2\tBob\t3 days ago\tempty commit\n`
+  `${sha1}\ta1\tAlice\t2 days ago\t${decor}\tfix: bug\n\n 3 files changed, 10 insertions(+), 2 deletions(-)\n${sha2}\tb2\tBob\t3 days ago\t\tempty commit\n`
 );
 assert.deepStrictEqual(log, [
-  { sha: sha1, short: 'a1', author: 'Alice', when: '2 days ago', subject: 'fix: bug', files: 3, ins: 10, del: 2 },
-  { sha: sha2, short: 'b2', author: 'Bob', when: '3 days ago', subject: 'empty commit', files: 0, ins: 0, del: 0 },
+  { sha: sha1, short: 'a1', author: 'Alice', when: '2 days ago', refs: [{ name: 'main', remote: false }, { name: 'origin/main', remote: true }], subject: 'fix: bug', files: 3, ins: 10, del: 2 },
+  { sha: sha2, short: 'b2', author: 'Bob', when: '3 days ago', refs: [], subject: 'empty commit', files: 0, ins: 0, del: 0 },
 ]);
 
 // compactDir: a/b/c collapses into one label; stops at a dir with files
@@ -73,7 +88,7 @@ const mixed = buildTree([
 assert.strictEqual(compactDir('a', mixed.dirs.get('a')).name, 'a');
 
 // Local-vs-history split: unpushed commits show by default, history behind Load more.
-const { CommitTreeProvider } = require('./extension.js');
+const { CommitTreeProvider, graphRows } = require('./extension.js');
 const os = require('os');
 const fs = require('fs');
 const path = require('path');
@@ -129,6 +144,21 @@ const cp = require('child_process');
   // history exhausted (1 < 50): no "show more", but a way back
   // hide sits on the boundary between local and pushed commits, not at the bottom
   assert.deepStrictEqual(items.map(lbl), ['c3', 'c2', 'Hide pushed history', 'c1']);
+  // Commit graph webview rows: Graph lanes (unpushed local, pushed remote), ref badges
+  // kept apart from the subject, checkboxes, and the right-click context for menus.
+  const byId = new Map();
+  const rows = await graphRows(provider, items, '', byId);
+  assert.deepStrictEqual(rows.map((r) => [r.label, r.lane, r.checked]), [
+    ['c3', 'local', true], ['c2', 'local', true], ['Hide pushed history', undefined, undefined], ['c1', 'remote', false],
+  ]);
+  assert.deepStrictEqual(rows[0].refs, [{ name: 'main', remote: false }]);
+  assert.deepStrictEqual(rows[0].ctx, { sha: items[0].sha, subject: 'c3' });
+  assert.ok(rows[0].branch && !rows[0].children, 'commit files load lazily');
+  assert.ok(rows[2].run && byId.get(rows[2].id) === items[2], 'command rows resolve back to their TreeItem');
+  // a commit's files carry the status badge and color the native tree gets from decorations
+  const files = await graphRows(provider, await provider.getChildren(items[0]), rows[0].id, byId);
+  assert.deepStrictEqual(files.map((r) => [r.label, r.deco]), [['f3.js', { badge: 'A', color: 'gitDecoration.addedResourceForeground' }]]);
+  assert.deepStrictEqual(files[0].ctx, { filePath: 'f3.js' });
 
   provider.hideHistory();
   items = await provider.getCommits(repo);

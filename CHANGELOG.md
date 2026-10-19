@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.30
+- "By commits" now looks like the Source Control Graph: commits sit on a colored lane (blue = unpushed, purple = already on the remote), and branch badges at the right edge show where your branch, its upstream, and other branches such as `origin/develop` point. Badges never take more than a quarter of the row; long subjects truncate first. Rows are compact like the Graph's (22px, narrow lane, no expand arrows; click a commit to show its files), so more of each subject fits. Checkboxes, hover actions, and the right-click menu work as before.
+- Under the hood this view is now a webview built with [vscode-elements](https://github.com/vscode-elements/elements) and codicons, because native tree rows cannot hold lanes or right-aligned badges. Combined, By dependencies, and Comments stay native trees. File rows show a generic file icon instead of your icon theme's.
+
 ## 0.4.29
 - Export (clipboard and file) now carries only this round's feedback: the "Previous round" checklist is no longer included. The ✅ / ⏳ status of the last round stays in the Comments view.
 
