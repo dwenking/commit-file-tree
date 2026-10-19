@@ -1190,6 +1190,13 @@ class CommitTreeProvider {
     return items;
   }
 
+  // Hover card for a commit row, like the Source Control Graph's: the parsed log
+  // entry (stats included) plus what the list does not load up front.
+  async commitCard(root, c) {
+    const [email, date, message] = (await git(root, ['show', '-s', '--format=%ae%x00%aI%x00%B', c.sha])).split('\0');
+    return { ...c, email, date, message: message.trim() };
+  }
+
   // Lanes follow the Source Control Graph: local = unpushed, remote = already on
   // the remote; history with no base at all has no lane color.
   commitItem(c, unpushed, checked, pushed) {
@@ -1197,6 +1204,7 @@ class CommitTreeProvider {
     item.contextValue = 'commit';
     item.lane = unpushed ? 'local' : pushed ? 'remote' : 'none';
     item.refs = c.refs;
+    item.commit = c;
     item.checkboxState = checked ? vscode.TreeItemCheckboxState.Checked : vscode.TreeItemCheckboxState.Unchecked;
     item.sha = c.sha;
     item.subject = c.subject;
@@ -1761,6 +1769,9 @@ function activate(context) {
         if (m.type === 'children') {
           const rows = await graphRows(provider, await provider.getChildren(item), m.id, byId);
           wv.webview.postMessage({ type: 'children', id: m.id, rows });
+        }
+        if (m.type === 'card' && item.commit) {
+          wv.webview.postMessage({ type: 'card', id: m.id, card: await provider.commitCard(provider.repoRoot, item.commit) });
         }
         // Commit checkboxes set the review range; the Working tree one includes uncommitted changes.
         if (m.type === 'check' && item.contextValue === 'worktree') provider.setIncludeLocal(m.checked);

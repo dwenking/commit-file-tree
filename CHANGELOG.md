@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.4.31
+- Hover a commit in "By commits" for a card like the Source Control Graph's: author, relative and exact date, the full commit message (body and trailers such as Co-Authored-By), colored `+/−` stats, and the commit's branch badges. It opens below the row, or above when there is no room; when space is short the message fades out and the stats and badges stay. Because a webview cannot draw outside its own view, the card covers part of the list instead of opening beside it; it lets the pointer pass through, so the rows under it stay hoverable and clickable (links in the card are therefore plain text).
+
 ## 0.4.30
 - "By commits" now looks like the Source Control Graph: commits sit on a colored lane (blue = unpushed, purple = already on the remote), and branch badges at the right edge show where your branch, its upstream, and other branches such as `origin/develop` point. Badges never take more than a quarter of the row; long subjects truncate first. Rows are compact like the Graph's (22px, narrow lane, no expand arrows; click a commit to show its files), so more of each subject fits. Checkboxes, hover actions, and the right-click menu work as before.
 - Under the hood this view is now a webview built with [vscode-elements](https://github.com/vscode-elements/elements) and codicons, because native tree rows cannot hold lanes or right-aligned badges. Combined, By dependencies, and Comments stay native trees. File rows show a generic file icon instead of your icon theme's.

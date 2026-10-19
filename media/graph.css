@@ -118,6 +118,64 @@ vscode-tree-item[selected] > .checkbox {
   border-color: var(--vscode-checkbox-selectBorder, var(--vscode-checkbox-border));
 }
 
+/* Commit hover card: the workbench hover's colors, the Graph hover's stat colors.
+   pointer-events: none — it covers rows, which must stay hoverable/clickable. */
+.card {
+  position: fixed;
+  left: 8px;
+  z-index: 10;
+  box-sizing: border-box;
+  max-width: min(480px, calc(100vw - 16px));
+  overflow: hidden;
+  pointer-events: none;
+  padding: 4px 8px;
+  border: 1px solid var(--vscode-editorHoverWidget-border);
+  border-radius: 3px;
+  background: var(--vscode-editorHoverWidget-background);
+  color: var(--vscode-editorHoverWidget-foreground);
+  box-shadow: 0 2px 8px var(--vscode-widget-shadow);
+  line-height: 19px;
+}
+.card vscode-icon {
+  display: inline-block;
+  vertical-align: text-bottom;
+}
+/* Short on room, only the message shrinks (faded); header, stats and badges stay. */
+.card:not([hidden]) {
+  display: flex;
+  flex-direction: column;
+}
+.card > * {
+  flex: none;
+}
+.card > .message {
+  flex: 0 1 auto;
+  min-height: 0;
+  overflow: hidden;
+  margin: 4px 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.card > .message.clipped {
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 19px), transparent);
+}
+.card hr {
+  margin: 4px -8px;
+  border: 0;
+  border-top: 1px solid var(--vscode-editorHoverWidget-border);
+}
+.card .ins {
+  color: var(--vscode-scmGraph-historyItemHoverAdditionsForeground, var(--vscode-gitDecoration-addedResourceForeground));
+}
+.card .del {
+  color: var(--vscode-scmGraph-historyItemHoverDeletionsForeground, var(--vscode-gitDecoration-deletedResourceForeground));
+}
+.card .refs {
+  max-width: none;
+  flex-wrap: wrap;
+  margin: 2px 0;
+}
+
 .pending {
   font-style: italic;
   opacity: 0.6;

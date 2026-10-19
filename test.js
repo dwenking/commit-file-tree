@@ -159,6 +159,10 @@ const cp = require('child_process');
   const files = await graphRows(provider, await provider.getChildren(items[0]), rows[0].id, byId);
   assert.deepStrictEqual(files.map((r) => [r.label, r.deco]), [['f3.js', { badge: 'A', color: 'gitDecoration.addedResourceForeground' }]]);
   assert.deepStrictEqual(files[0].ctx, { filePath: 'f3.js' });
+  // Hover card (like the Graph's): the row's commit plus email, exact date and full message
+  const card = await provider.commitCard(repo, byId.get(rows[0].id).commit);
+  assert.deepStrictEqual([card.subject, card.author, card.email, card.message, card.files, card.ins], ['c3', 't', 't@t', 'c3', 1, 1]);
+  assert.match(card.date, /^\d{4}-\d\d-\d\dT/);
 
   provider.hideHistory();
   items = await provider.getCommits(repo);

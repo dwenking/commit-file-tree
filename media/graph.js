@@ -54,7 +54,8 @@ function checkbox(r) {
 function row(r, nested) {
   const item = el('vscode-tree-item', {
     slot: nested ? 'children' : undefined,
-    title: r.tooltip,
+    // Commit rows get the hover card instead of a plain-text tooltip.
+    title: r.lane ? undefined : r.tooltip,
     'data-id': r.id,
     'data-lane': r.lane,
     'data-vscode-context': JSON.stringify({ webviewSection: r.context, preventDefaultContextMenuItems: true, ...r.ctx }),
@@ -110,6 +111,7 @@ function load(item) {
 }
 
 const kids = (item) => item.querySelectorAll(':scope > vscode-tree-item');
+const rowOf = (id) => tree.querySelector(`vscode-tree-item[data-id="${CSS.escape(id)}"]`);
 
 window.addEventListener('message', ({ data }) => {
   if (data.type === 'root') {
@@ -123,13 +125,75 @@ window.addEventListener('message', ({ data }) => {
     }
   }
   if (data.type === 'children') {
-    const item = tree.querySelector(`vscode-tree-item[data-id="${CSS.escape(data.id)}"]`);
+    const item = rowOf(data.id);
     if (!item) return;
     delete item.dataset.lazy;
     kids(item).forEach((c) => c.remove());
     item.append(...data.rows.map((r) => row(r, true)));
   }
+  if (data.type === 'card') {
+    cards.set(data.id, data.card);
+    showCard(data.id);
+  }
 });
+
+// Hover card for commit rows, like the Source Control Graph's. It appears after
+// the workbench's default hover delay and is fetched once per commit (a commit's
+// message and stats never change). A webview cannot draw beside the list the way
+// the Graph's hover does, so the card covers rows instead; it lets the pointer
+// through (see graph.css) so those rows stay reachable, and follows the pointer.
+const card = el('div', { class: 'card', role: 'tooltip', hidden: '' });
+document.body.append(card);
+const cards = new Map();
+let hovered; // id of the commit row under the pointer
+let showTimer;
+
+const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
+
+function showCard(id) {
+  const item = rowOf(id);
+  const c = cards.get(id);
+  if (hovered !== id || !item || !c) return;
+  const date = new Date(c.date).toLocaleString(undefined, { dateStyle: 'long', timeStyle: 'short' });
+  const author = el('strong', { title: c.email }, c.author);
+  const parts = [el('div', {}, author, ', ', icon('history'), ` ${c.when} (${date})`), el('div', { class: 'message' }, c.message)];
+  if (c.files) {
+    const stats = el('div', {}, `${plural(c.files, 'file')} changed, `, el('span', { class: 'ins' }, `${plural(c.ins, 'insertion')}(+)`));
+    stats.append(', ', el('span', { class: 'del' }, `${plural(c.del, 'deletion')}(-)`));
+    parts.push(el('hr', {}), stats);
+  }
+  // The row's own branch badges, so the card always matches the list.
+  const refs = item.querySelector(':scope > .refs');
+  if (refs) parts.push(el('hr', {}), refs.cloneNode(true));
+  card.replaceChildren(...parts);
+  // Below the row, or above it when it only fits there; a webview cannot draw past
+  // its own edges, so the card scrolls when neither side has room for all of it.
+  const rowBox = item.shadowRoot.querySelector('.wrapper').getBoundingClientRect();
+  const below = innerHeight - rowBox.bottom - 4;
+  card.style.maxHeight = `${Math.max(below, rowBox.top - 4)}px`;
+  card.hidden = false;
+  const message = card.querySelector('.message');
+  message.classList.toggle('clipped', message.scrollHeight > message.clientHeight);
+  const h = card.offsetHeight;
+  card.style.top = `${h <= below ? rowBox.bottom + 2 : rowBox.top - h - 2}px`;
+}
+
+function hideCard() {
+  clearTimeout(showTimer);
+  hovered = undefined;
+  card.hidden = true;
+}
+
+tree.addEventListener('pointerover', (e) => {
+  const item = e.target.closest('vscode-tree-item');
+  const id = item && item.dataset.lane ? item.dataset.id : undefined;
+  if (id === hovered) return;
+  hideCard();
+  hovered = id;
+  if (id) showTimer = setTimeout(() => (cards.has(id) ? showCard(id) : vscode.postMessage({ type: 'card', id })), 500);
+});
+tree.addEventListener('pointerleave', hideCard);
+window.addEventListener('scroll', hideCard);
 
 // Expanding a row: remember it, and fetch lazy children the first time.
 new MutationObserver((records) => {
