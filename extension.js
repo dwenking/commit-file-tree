@@ -1270,17 +1270,7 @@ class CommitTreeProvider {
     }
     const range = await this.rangeFiles(root, ctx);
     if (!range.files.length) return [this.allPushedItem()];
-    return [this.declarationsItem(), ...(await this.getTreeNodes(buildTree(range.files), range.ctx))];
-  }
-
-  // Heads the Combined list; the webview draws its two buttons, which open or close
-  // every file's declaration list at once (folders and files stay as they are).
-  declarationsItem() {
-    const item = new vscode.TreeItem('Declarations', vscode.TreeItemCollapsibleState.None);
-    item.contextValue = 'declarations';
-    item.iconPath = new vscode.ThemeIcon('symbol-misc');
-    item.description = 'expand or collapse all';
-    return item;
+    return this.getTreeNodes(buildTree(range.files), range.ctx);
   }
 
   // Files of the review range, honoring the Working tree checkbox (include uncommitted): when on,
@@ -1711,6 +1701,10 @@ function graphHtml(webview, media) {
   <link rel="stylesheet" href="${src('graph.css')}">
 </head>
 <body data-vscode-context='{"preventDefaultContextMenuItems": true}'>
+  <div class="toolbar" hidden>
+    <vscode-toolbar-button icon="expand-all" label="Expand all declarations" title="Expand all declarations" data-open="1"></vscode-toolbar-button>
+    <vscode-toolbar-button icon="collapse-all" label="Collapse all declarations" title="Collapse all declarations"></vscode-toolbar-button>
+  </div>
   <vscode-tree indent-guides="onHover" hide-arrows indent="16" expand-mode="doubleClick"></vscode-tree>
   <script type="module" nonce="${nonce}" src="${src('vscode-elements.js')}"></script>
   <script type="module" nonce="${nonce}" src="${src('graph.js')}"></script>
@@ -2098,7 +2092,7 @@ function activate(context) {
     const rows = await graphRows(provider, await provider.getChildren(), '', ids);
     if (mode !== provider.mode) return; // a quicker switch already posted the newer mode
     byId = ids;
-    wv.webview.postMessage({ type: 'root', rows });
+    wv.webview.postMessage({ type: 'root', rows, mode });
   }
   const graphProvider = {
     resolveWebviewView(wv) {

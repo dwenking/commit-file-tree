@@ -87,31 +87,20 @@ function row(r, nested) {
     );
     item.append(el('span', { slot: 'decoration', class: 'refs' }, ...badges));
   }
-  // The Combined list's "Declarations" row: two always-visible buttons that open or
-  // close every file's declaration list, leaving folders and files alone.
-  if (r.context === 'declarations') {
-    for (const [name, open, title] of [['expand-all', true, 'Expand all declarations'], ['collapse-all', false, 'Collapse all declarations']]) {
-      const btn = el('vscode-toolbar-button', { slot: 'decoration', icon: name, label: title, title });
-      btn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        for (const f of tree.querySelectorAll('vscode-tree-item[data-symbols]')) f.toggleAttribute('open', open);
-      });
-      item.append(btn);
-    }
-  }
-  // Files whose declarations changed: a small marker that unfolds them. The row's
-  // own click only opens the diff (see the select handler).
+  // Files whose declarations changed: a dim marker at rest (decorations give way to
+  // the hover actions, so it cannot be clicked) and a hover action that unfolds
+  // them. The row's own click only opens the diff (see the select handler).
   if (r.symbols) {
-    const badge = icon('symbol-misc', 'decoration');
-    badge.classList.add('symbols');
-    badge.setAttribute('role', 'button');
-    badge.title = 'Show changed declarations';
-    badge.addEventListener('click', (e) => {
+    const mark = icon('symbol-misc', 'decoration');
+    mark.classList.add('symbols');
+    mark.title = 'Declarations changed';
+    item.append(mark);
+    const btn = el('vscode-toolbar-button', { slot: 'actions', icon: 'symbol-misc', label: 'Show changed declarations', title: 'Show changed declarations' });
+    btn.addEventListener('click', (e) => {
       e.stopPropagation();
-      e.preventDefault();
       item.toggleAttribute('open');
     });
-    item.append(badge);
+    item.append(btn);
   }
   if (r.deco && r.deco.badge) {
     const badge = el('span', { slot: 'decoration', class: 'status' }, r.deco.badge);
@@ -165,9 +154,19 @@ function continueReveal() {
   }
 }
 
+// Combined only: the two buttons above the tree open or close every file's
+// declaration list at once; folders and files are left alone.
+const toolbar = document.querySelector('.toolbar');
+for (const btn of toolbar.querySelectorAll('vscode-toolbar-button')) {
+  btn.addEventListener('click', () => {
+    for (const f of tree.querySelectorAll('vscode-tree-item[data-symbols]')) f.toggleAttribute('open', !!btn.dataset.open);
+  });
+}
+
 window.addEventListener('message', ({ data }) => {
   if (data.type === 'reveal') reveal = data.ids;
   if (data.type === 'root') {
+    toolbar.hidden = data.mode !== 'combined';
     const prev = new Map([...tree.querySelectorAll('vscode-tree-item[data-id]')].map((i) => [i.dataset.id, i]));
     const selected = [...tree.querySelectorAll('vscode-tree-item[selected]')].map((i) => i.dataset.id);
     tree.replaceChildren(...data.rows.map((r) => row(r, false)));

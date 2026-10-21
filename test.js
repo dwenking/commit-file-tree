@@ -203,9 +203,9 @@ const cp = require('child_process');
   provider.setMode('combined');
   items = await provider.getCombined(repo);
   // no checkbox row: the Working tree checkbox in the commits view is the only control;
-  // a "Declarations" row (expand / collapse every file's declaration list) heads the list
-  assert.deepStrictEqual(items.map((i) => i.label).sort(), ['Declarations', 'f2.js', 'f3.js']);
-  assert.strictEqual(items[1].command.command, 'commitFileTree.openDiff');
+  // the expand/collapse-declarations buttons are drawn by the webview above the tree
+  assert.deepStrictEqual(items.map((i) => i.label).sort(), ['f2.js', 'f3.js']);
+  assert.strictEqual(items[0].command.command, 'commitFileTree.openDiff');
 
   // A working-copy comment is counted once, even when the view itself targets the working copy
   mem['cft.comments'] = { 'working:f2.js': [{ line: 1, text: 'once' }] };
@@ -992,12 +992,6 @@ assert.ok(!buildSummaryMd({ rangeLabel: 'r', files: [{ path: 'x', comments: [] }
   assert.deepStrictEqual(syms[1].command.arguments.slice(4), [2, 'base']);
   const data = await provider.summaryData(repo);
   assert.deepStrictEqual(data.files.find((f) => f.path === 'lib.js').symbols.map((s) => s.change + s.name), ['Ac', 'Db']);
-  // Combined: a "Declarations" row heads the list; the webview draws its expand-all /
-  // collapse-all buttons, which open and close the declaration lists only.
-  provider.mode = 'combined';
-  const combined = await provider.getChildren();
-  assert.strictEqual(combined[0].contextValue, 'declarations');
-  assert.strictEqual(combined[0].command, undefined);
   // Dependency view: a row under lib.js is a file importing it; it opens at that import line.
   provider.mode = 'deps';
   const deps = await provider.getChildren();

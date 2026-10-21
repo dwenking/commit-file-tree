@@ -12,7 +12,7 @@ Solo-maintained. Discrete feature requests go to GitHub Issues; this file holds 
 
 ## Shipped
 
-- 0.4.35 — Dependency view: clicking a nested row opens its diff at the line where it imports its parent. "Declarations" row at the top of Combined with expand-all / collapse-all buttons for the declaration lists only.
+- 0.4.35 — Dependency view: clicking a nested row opens its diff at the line where it imports its parent. Expand-all / collapse-all buttons above the Combined list, for the declaration lists only (webview-side: tree decorations hide on hover, so controls cannot live there).
 - 0.4.34 — Symbol changes: a marker on a file unfolds its declarations as A/M/D rows ("method audited", "variable Javers javers"; JS/TS, Python, Java) with kind icons; click one to open the diff at that line; "Structure changes" section in the export. Static regex scan of both sides, since no language server serves `git:` URIs; compared by signature, so overloads and type changes show.
 - 0.4.33 — Fix: the view no longer changes height when switching modes; every mode renders in the one webview instead of swapping a webview and a native tree.
 - 0.4.32 — Fix: clicking a commit closes its hover card, which covered the files that opened under it.
