@@ -217,6 +217,8 @@ const cp = require('child_process');
   sh('mkdir -p sub && echo y > sub/a.txt');
   items = await provider.getCombined(repo);
   const dir = items.find((i) => i.contextValue === 'dir');
+  // Combined opens folded: folders start collapsed (By commits keeps them open).
+  assert.strictEqual(dir.collapsibleState, 1);
   assert.strictEqual(dir.reviewId, `${dir.ctx.keyRef}:sub/`);
   mem['cft.notes'] = { [dir.reviewId]: 'too big' };
   items = await provider.getCombined(repo);
@@ -884,9 +886,10 @@ assert.deepStrictEqual(
 // Unsupported languages and oversized files yield nothing (so their rows stay leaves).
 assert.deepStrictEqual(extractSymbols('a.go', 'func main() {}'), []);
 assert.deepStrictEqual(extractSymbols('a.js', 'function a() {}' + ' '.repeat(1024 * 1024)), []);
-// Set difference by signature: added first (target lines), then removed (base
-// lines). A moved symbol is not a change; a changed signature is one removed and
-// one added; dropping one overload of a name is reported (the other one stays).
+// Set difference by signature, reported like file statuses: A (added, target line),
+// M (same name, different declaration: one row carrying the old text), D (removed,
+// base line). A moved symbol is not a change; dropping one overload of a name is a
+// D, since the remaining overload matches exactly and so is not paired with it.
 const symsBefore = [
   sym('a', 'function', 1, 'function a()'),
   sym('b', 'variable', 2, 'const b'),
@@ -901,12 +904,26 @@ const symsAfter = [
   sym('R.audited', 'function', 12, 'JsonArray audited(List<Cdo> s)'),
 ];
 assert.deepStrictEqual(diffSymbols(symsBefore, symsAfter), [
-  { change: '+', ...sym('a', 'function', 5, 'function a(x)') },
-  { change: '+', ...sym('d', 'function', 9, 'function d()') },
-  { change: '-', ...sym('a', 'function', 1, 'function a()') },
-  { change: '-', ...sym('b', 'variable', 2, 'const b') },
-  { change: '-', ...sym('R.audited', 'function', 8, 'JsonObject audited(Cdo s)') },
+  { change: 'M', ...sym('a', 'function', 5, 'function a(x)'), was: 'function a()' },
+  { change: 'A', ...sym('d', 'function', 9, 'function d()') },
+  { change: 'D', ...sym('b', 'variable', 2, 'const b') },
+  { change: 'D', ...sym('R.audited', 'function', 8, 'JsonObject audited(Cdo s)') },
 ]);
+// Row text: the kind word, then a method's bare name or a variable's type and name
+// (modifiers dropped); members say "method", top-level functions "function".
+const { symbolLabel } = require('./extension.js');
+assert.deepStrictEqual(
+  [
+    { kind: 'field', name: 'R.javers', text: 'private final Javers javers' },
+    { kind: 'function', name: 'R.audited', text: 'private JsonObject audited(final CdoSnapshot snapshot)' },
+    { kind: 'function', name: 'git', text: 'function git(cwd, args)' },
+    { kind: 'variable', name: 'count', text: 'let count: number' },
+    { kind: 'variable', name: 'PORT', text: 'export const PORT' },
+    { kind: 'class', name: 'R.LoadedCommit', text: 'private record LoadedCommit(Changes changes)' },
+    { kind: 'variable', name: 'Repo.table', text: 'table' },
+  ].map(symbolLabel),
+  ['variable Javers javers', 'method audited', 'function git', 'variable count: number', 'variable PORT', 'class LoadedCommit', 'variable table']
+);
 // A removed symbol's line exists only on the old side, and a diff editor selects on the
 // new side: map it through the hunks. Inside a hunk → its new-side start (the line after
 // it for a pure deletion); elsewhere → shifted by the hunks above.
@@ -923,16 +940,18 @@ const symMd = buildSummaryMd({
       path: 'src/a.ts',
       comments: [],
       symbols: [
-        { change: '+', name: 'foo', kind: 'function', text: 'function foo(a: number)' },
-        { change: '+', name: 'Bar', kind: 'class', text: 'class Bar' },
-        { change: '-', name: 'baz', kind: 'variable', text: 'const baz' },
+        { change: 'A', name: 'foo', kind: 'function', text: 'function foo(a: number)' },
+        { change: 'M', name: 'Bar', kind: 'class', text: 'class Bar extends Base', was: 'class Bar' },
+        { change: 'D', name: 'baz', kind: 'variable', text: 'const baz' },
       ],
     },
     { path: 'src/b.ts', comments: [], symbols: [] },
   ],
 });
 assert.ok(
-  symMd.includes('## 🧩 Structure changes\n\n- src/a.ts\n  - `+ function foo(a: number)`\n  - `+ class Bar`\n  - `− const baz`\n'),
+  symMd.includes(
+    '## 🧩 Structure changes\n\n- src/a.ts\n  - added: function foo(a: number)\n  - modified: class Bar extends Base (was: class Bar)\n  - removed: const baz\n'
+  ),
   symMd
 );
 assert.ok(!symMd.includes('src/b.ts'));
@@ -960,19 +979,19 @@ assert.ok(!buildSummaryMd({ rangeLabel: 'r', files: [{ path: 'x', comments: [] }
   assert.strictEqual(byPath('app.js').collapsibleState, 1);
   assert.strictEqual(byPath('lib.js').collapsibleState, 1);
   const syms = await provider.getChildren(byPath('lib.js'));
-  // Rows show the declaration; the icon says the kind (standard symbol colors), the
-  // label color says added or removed.
-  assert.deepStrictEqual(syms.map((s) => s.label), ['+ function c()', '− const b']);
+  // Rows read "kind name"; the file-status color and A/M/D badge say what happened
+  // to them (same decoration as file rows); the icon color gives the kind.
+  assert.deepStrictEqual(syms.map((s) => s.label), ['function c', 'variable b']);
+  assert.deepStrictEqual(syms.map((s) => s.resourceUri.query), ['cftStatus=A&rev=0', 'cftStatus=D&rev=0']);
   assert.deepStrictEqual(syms.map((s) => [s.iconPath.id, s.iconPath.color.id]), [
     ['symbol-method', 'symbolIcon.methodForeground'],
     ['symbol-variable', 'symbolIcon.variableForeground'],
   ]);
-  assert.deepStrictEqual(syms.map((s) => s.labelColor), ['gitDecoration.addedResourceForeground', 'gitDecoration.deletedResourceForeground']);
   assert.strictEqual(syms[0].command.command, 'commitFileTree.openDiff');
   assert.deepStrictEqual(syms[0].command.arguments.slice(4), [2]);
   assert.deepStrictEqual(syms[1].command.arguments.slice(4), [2, 'base']);
   const data = await provider.summaryData(repo);
-  assert.deepStrictEqual(data.files.find((f) => f.path === 'lib.js').symbols.map((s) => s.change + s.name), ['+c', '-b']);
+  assert.deepStrictEqual(data.files.find((f) => f.path === 'lib.js').symbols.map((s) => s.change + s.name), ['Ac', 'Db']);
   // Combined: a "Collapse all" row heads the list (the view title has no such button).
   provider.mode = 'combined';
   const combined = await provider.getChildren();

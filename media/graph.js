@@ -86,13 +86,13 @@ function row(r, nested) {
     );
     item.append(el('span', { slot: 'decoration', class: 'refs' }, ...badges));
   }
-  // Files whose declarations changed: a "+2 −1" badge that unfolds them. The row's
+  // Files whose declarations changed: a small marker that unfolds them. The row's
   // own click only opens the diff (see the select handler).
   if (r.symbols) {
-    const parts = [];
-    if (r.symbols.added) parts.push(el('span', { class: 'ins' }, `+${r.symbols.added}`));
-    if (r.symbols.removed) parts.push(el('span', { class: 'del' }, `−${r.symbols.removed}`));
-    const badge = el('span', { slot: 'decoration', class: 'symbols', role: 'button', title: 'Show changed declarations' }, ...parts);
+    const badge = icon('symbol-misc', 'decoration');
+    badge.classList.add('symbols');
+    badge.setAttribute('role', 'button');
+    badge.title = 'Show changed declarations';
     badge.addEventListener('click', (e) => {
       e.stopPropagation();
       e.preventDefault();
@@ -174,12 +174,10 @@ window.addEventListener('message', ({ data }) => {
     kids(item).forEach((c) => c.remove());
     item.append(...data.rows.map((r) => row(r, true)));
   }
-  // Collapse All (view title): close every expanded row except folders, which only
-  // group files. The open-attribute observer below records the new state.
+  // "Collapse all" (the Combined list's first row): close every expanded row. The
+  // open-attribute observer below records the new state.
   if (data.type === 'collapse') {
-    for (const item of tree.querySelectorAll('vscode-tree-item[open]')) {
-      if (item.dataset.context !== 'dir') item.removeAttribute('open');
-    }
+    for (const item of tree.querySelectorAll('vscode-tree-item[open]')) item.removeAttribute('open');
   }
   continueReveal();
   if (data.type === 'card') {

@@ -513,24 +513,34 @@ function extractSymbols(filePath, source) {
   return out;
 }
 
-// Set difference by signature (owner-qualified name plus declaration text): added
-// (with target lines) first, then removed (base lines). A moved symbol is not a
-// change; a changed signature is one removed and one added, and dropping one
-// overload of a name is reported even while the other stays.
+// Set difference by signature (owner-qualified name plus declaration text), reported
+// like file statuses: A added (target line), M same name but a different declaration
+// (one row, the old text in `was`), D removed (base line). A moved symbol is not a
+// change; a dropped overload is a D, since the remaining one matches exactly.
 function diffSymbols(before, after) {
   const key = (s) => `${s.name} ${s.text}`;
-  const keys = (list) => new Set(list.map(key));
-  const was = keys(before);
-  const now = keys(after);
-  const firstOfKey = (list) => list.filter((s, i) => list.findIndex((t) => key(t) === key(s)) === i);
-  return [
-    ...firstOfKey(after).filter((s) => !was.has(key(s))).map((s) => ({ change: '+', ...s })),
-    ...firstOfKey(before).filter((s) => !now.has(key(s))).map((s) => ({ change: '-', ...s })),
-  ];
+  const was = new Set(before.map(key));
+  const now = new Set(after.map(key));
+  const removed = before.filter((s) => !now.has(key(s)));
+  const out = [];
+  for (const s of after.filter((s) => !was.has(key(s)))) {
+    const i = removed.findIndex((r) => r.name === s.name);
+    if (i < 0) out.push({ change: 'A', ...s });
+    else out.push({ change: 'M', ...s, was: removed.splice(i, 1)[0].text });
+  }
+  return [...out, ...removed.map((s) => ({ change: 'D', ...s }))];
 }
 
-// "+ private int max" / "− def find(id)": the declaration with its change sign.
-const symbolText = (s) => `${s.change === '+' ? '+' : '−'} ${s.text}`;
+// Row text: the kind word, then a method's bare name or a variable's type and name
+// with modifiers dropped — "method audited", "variable Javers javers".
+const MODIFIERS = /^(?:(?:export|default|declare|public|private|protected|static|final|readonly|abstract|override|transient|volatile|const|let|var)\s+)+/;
+function symbolLabel(s) {
+  const bare = s.name.slice(s.name.lastIndexOf('.') + 1);
+  if (s.kind === 'function') return `${s.name.includes('.') ? 'method' : 'function'} ${bare}`;
+  if (s.kind === 'variable' || s.kind === 'field') return `variable ${s.text.replace(MODIFIERS, '')}`;
+  return `${s.kind} ${bare}`;
+}
+const CHANGE_WORD = { A: 'added', M: 'modified', D: 'removed' };
 
 // --- Review summary export ---------------------------------------------------
 
@@ -580,7 +590,7 @@ function buildSummaryMd(data) {
     lines.push('## 🧩 Structure changes', '');
     for (const f of structural) {
       lines.push(`- ${f.path}`);
-      for (const s of f.symbols) lines.push(`  - \`${symbolText(s)}\``);
+      for (const s of f.symbols) lines.push(`  - ${CHANGE_WORD[s.change]}: ${s.text}${s.was ? ` (was: ${s.was})` : ''}`);
     }
     lines.push('');
   }
@@ -1559,20 +1569,19 @@ class CommitTreeProvider {
     return diffSymbols(before, after);
   }
 
-  // A declaration under a file: the icon says the kind, the label color says added
-  // or removed, the description names the enclosing class. Opens the diff at the
-  // symbol's line; a removed symbol's line is on the base side, which openDiff maps
-  // onto the modified side.
+  // A declaration under a file: "method audited" / "variable Javers javers". The
+  // icon color gives the kind; the label color and A/M/D badge, the same decoration
+  // file rows use, say what happened to it. Opens the diff at its line; a removed
+  // symbol's line is on the base side, which openDiff maps onto the modified side.
   symbolItem(s, file) {
-    const item = new vscode.TreeItem(symbolText(s), vscode.TreeItemCollapsibleState.None);
+    const item = new vscode.TreeItem(symbolLabel(s), vscode.TreeItemCollapsibleState.None);
     item.contextValue = 'symbol';
-    const dot = s.name.lastIndexOf('.');
-    if (dot > 0) item.description = s.name.slice(0, dot);
-    item.tooltip = s.text;
+    item.tooltip = s.was ? `${s.text}\nwas: ${s.was}` : s.text;
     item.iconPath = new vscode.ThemeIcon(SYMBOL_ICON[s.kind], new vscode.ThemeColor(SYMBOL_COLOR[s.kind]));
-    item.labelColor = s.change === '+' ? 'gitDecoration.addedResourceForeground' : 'gitDecoration.deletedResourceForeground';
-    const side = s.change === '-' ? ['base'] : [];
-    item.command = { command: 'commitFileTree.openDiff', title: 'Open Diff', arguments: [...file.command.arguments, s.line, ...side] };
+    const [filePath, status, ctx, oldPath] = file.command.arguments;
+    item.resourceUri = vscode.Uri.file(path.join(this.repoRoot, filePath)).with({ query: `cftStatus=${s.change}&rev=0` });
+    const side = s.change === 'D' ? ['base'] : [];
+    item.command = { command: 'commitFileTree.openDiff', title: 'Open Diff', arguments: [filePath, status, ctx, oldPath, s.line, ...side] };
     return item;
   }
 
@@ -1582,7 +1591,9 @@ class CommitTreeProvider {
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([rawName, rawChild]) => {
         const { name, node: child } = compactDir(rawName, rawChild);
-        const item = new vscode.TreeItem(name, vscode.TreeItemCollapsibleState.Expanded);
+        // Combined opens folded so a large range stays scannable; a commit's few files open.
+        const state = this.mode === 'combined' ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.Expanded;
+        const item = new vscode.TreeItem(name, state);
         item.contextValue = 'dir';
         item.node = child;
         item.ctx = ctx;
@@ -1678,12 +1689,9 @@ async function graphRows(provider, items, parentId, byId) {
       run: !!item.command,
       lane: item.lane,
       refs: item.refs,
-      deco: deco ? { badge: deco.badge, color: deco.color.id } : item.labelColor ? { color: item.labelColor } : undefined,
-      // "+2 −1" badge on files whose declarations changed; clicking it unfolds them.
-      symbols: item.symbols && {
-        added: item.symbols.filter((s) => s.change === '+').length,
-        removed: item.symbols.filter((s) => s.change === '-').length,
-      },
+      deco: deco && { badge: deco.badge, color: deco.color.id },
+      // Files whose declarations changed get a marker that unfolds them.
+      symbols: !!item.symbols,
     };
     if (row.open) row.children = await graphRows(provider, await provider.getChildren(item), id, byId);
     rows.push(row);
@@ -2277,6 +2285,7 @@ module.exports = {
   buildEdges,
   extractSymbols,
   diffSymbols,
+  symbolLabel,
   buildSummaryMd,
   writeReviewFile,
   hunkOldRanges,

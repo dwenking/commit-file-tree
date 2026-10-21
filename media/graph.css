@@ -172,11 +172,10 @@ vscode-tree-item[selected] > .checkbox {
 .del {
   color: var(--vscode-scmGraph-historyItemHoverDeletionsForeground, var(--vscode-gitDecoration-deletedResourceForeground));
 }
-/* "+2 −1" on a file whose declarations changed; click unfolds them. */
+/* Marker on a file whose declarations changed; click unfolds them. */
 .symbols {
-  display: inline-flex;
-  gap: 4px;
   margin-right: 6px;
+  color: var(--vscode-descriptionForeground);
   cursor: pointer;
 }
 .card .refs {
