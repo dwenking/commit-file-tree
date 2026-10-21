@@ -87,20 +87,19 @@ function row(r, nested) {
     );
     item.append(el('span', { slot: 'decoration', class: 'refs' }, ...badges));
   }
-  // Files whose declarations changed: a dim marker at rest (hidden on hover via
-  // graph.css — the hover actions repeat the same icon) and a hover action that
-  // unfolds them. The row's own click only opens the diff (see the select handler).
+  // Files whose declarations changed: the line-end marker is itself the button
+  // that unfolds them. One icon, always visible — a hover action would repeat it
+  // (decorations do not give way to actions) and keep the actions stuck visible
+  // via focus after a click. The row's own click only opens the diff.
   if (r.symbols) {
     const mark = icon('symbol-misc', 'decoration');
     mark.classList.add('symbols');
-    mark.title = 'Declarations changed';
-    item.append(mark);
-    const btn = el('vscode-toolbar-button', { slot: 'actions', icon: 'symbol-misc', label: 'Show changed declarations', title: 'Show changed declarations' });
-    btn.addEventListener('click', (e) => {
+    mark.title = 'Changed declarations — click to show/hide';
+    mark.addEventListener('click', (e) => {
       e.stopPropagation();
       item.toggleAttribute('open');
     });
-    item.append(btn);
+    item.append(mark);
   }
   if (r.deco && r.deco.badge) {
     const badge = el('span', { slot: 'decoration', class: 'status' }, r.deco.badge);

@@ -172,16 +172,15 @@ vscode-tree-item[selected] > .checkbox {
 .del {
   color: var(--vscode-scmGraph-historyItemHoverDeletionsForeground, var(--vscode-gitDecoration-deletedResourceForeground));
 }
-/* Marker on a file whose declarations changed (the hover action unfolds them).
-   Hidden while the row shows its hover actions, which include the same icon —
-   otherwise the button appears twice on the row. */
+/* Marker on a file whose declarations changed; clicking it unfolds them. */
 .symbols {
   margin-right: 6px;
+  border-radius: 3px;
   color: var(--vscode-descriptionForeground);
+  cursor: pointer;
 }
-vscode-tree-item:hover > .symbols,
-vscode-tree-item[selected] > .symbols {
-  display: none;
+.symbols:hover {
+  background: var(--vscode-toolbar-hoverBackground);
 }
 
 /* Combined: expand / collapse every declaration list, above the tree. */

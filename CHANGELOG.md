@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.4.37
+- Fix: the symbol icon could still appear twice on a row — after clicking the hover action, focus kept the action row visible next to the line-end marker. The hover action is gone; the marker itself is now the button: click it to show or hide the file's changed declarations.
+
 ## 0.4.36
 - Fix: entering Combined (or any mode) now starts from the mode's default expansion — folders open, declaration lists folded. Collapse state remembered by earlier sessions or older builds no longer makes the whole tree open collapsed, which also left the expand/collapse-declarations buttons with nothing visible to do. Expanding and collapsing still survives refreshes within the mode.
 - Fix: a file's symbol marker no longer shows next to the identical hover action, so the "show changed declarations" button appears once instead of twice on a hovered row.
