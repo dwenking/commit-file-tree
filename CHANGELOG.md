@@ -2,6 +2,7 @@
 
 ## 0.4.35
 - "By dependencies": a row nested under a file is a file that imports it, and clicking it now opens its diff with the cursor on that import line (the first one, when it imports the same file more than once). Top-level rows open as before.
+- A Collapse All button in the view title closes every expanded commit, file and symbol row in one click; folders stay open, since they only group files.
 
 ## 0.4.34
 - Files in "By commits", Combined and the Working tree expand into the functions, classes and variables the change added (`+`, green) or removed (`−`, red): top-level declarations plus one level of class methods and fields. Click a symbol to open the file's diff at its line; for a removed symbol the diff lands on the hunk where it was removed. JavaScript/TypeScript, Python and Java; files in other languages, and files over 1 MB, stay plain rows. The scan is static (per-language regexes, no language server), so a renamed symbol shows as one removed and one added, and an extra overload of an existing name is not reported.

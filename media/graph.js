@@ -62,6 +62,7 @@ function row(r, nested) {
     title: r.lane ? undefined : r.tooltip,
     'data-id': r.id,
     'data-lane': r.lane,
+    'data-context': r.context,
     'data-vscode-context': JSON.stringify({ webviewSection: r.context, preventDefaultContextMenuItems: true, ...r.ctx }),
   });
   // Icon: a Graph lane segment + dot for commits, the TreeItem's codicon otherwise.
@@ -157,6 +158,13 @@ window.addEventListener('message', ({ data }) => {
     delete item.dataset.lazy;
     kids(item).forEach((c) => c.remove());
     item.append(...data.rows.map((r) => row(r, true)));
+  }
+  // Collapse All (view title): close every expanded row except folders, which only
+  // group files. The open-attribute observer below records the new state.
+  if (data.type === 'collapse') {
+    for (const item of tree.querySelectorAll('vscode-tree-item[open]')) {
+      if (item.dataset.context !== 'dir') item.removeAttribute('open');
+    }
   }
   continueReveal();
   if (data.type === 'card') {

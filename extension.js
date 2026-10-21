@@ -2129,6 +2129,7 @@ function activate(context) {
     vscode.commands.registerCommand('commitFileTree.revealInDeps', revealInDeps),
     vscode.commands.registerCommand('commitFileTree.findInDeps', findInDeps),
     vscode.commands.registerCommand('commitFileTree.refresh', () => provider.refresh()),
+    vscode.commands.registerCommand('commitFileTree.collapseAll', () => provider.graphView && provider.graphView.webview.postMessage({ type: 'collapse' })),
     vscode.commands.registerCommand('commitFileTree.resetReviewRange', () => provider.resetReviewRange()),
     vscode.commands.registerCommand('commitFileTree.loadMore', () => provider.loadMore()),
     vscode.commands.registerCommand('commitFileTree.hideHistory', () => provider.hideHistory()),
