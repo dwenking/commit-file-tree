@@ -345,6 +345,7 @@ const SYMBOL_RULES = new Map([
   ['.py', PY_RULES],
   ['.java', JAVA_RULES],
 ]);
+// Codicon and the Outline view's color per kind, so method vs variable reads at a glance.
 const SYMBOL_ICON = {
   function: 'symbol-method',
   class: 'symbol-class',
@@ -353,6 +354,15 @@ const SYMBOL_ICON = {
   type: 'symbol-class',
   variable: 'symbol-variable',
   field: 'symbol-field',
+};
+const SYMBOL_COLOR = {
+  function: 'symbolIcon.methodForeground',
+  class: 'symbolIcon.classForeground',
+  interface: 'symbolIcon.interfaceForeground',
+  enum: 'symbolIcon.enumeratorForeground',
+  type: 'symbolIcon.classForeground',
+  variable: 'symbolIcon.variableForeground',
+  field: 'symbolIcon.fieldForeground',
 };
 
 function matchSymbol(rules, line, lineNo) {
@@ -375,6 +385,46 @@ function braces(line) {
 }
 const parens = (text) => (text.match(/\(/g) || []).length - (text.match(/\)/g) || []).length;
 
+// Index of `ch` in text outside (), [], {} and <> nesting; -1 when absent. For
+// '=' the comparison and arrow forms (==, =>, <=, >=, !=) do not count.
+function indexOutside(text, ch) {
+  let depth = 0;
+  for (let k = 0; k < text.length; k++) {
+    const c = text[k];
+    const plainEq = ch !== '=' || (!/[=<>!]/.test(text[k - 1] || '') && !/[=>]/.test(text[k + 1] || ''));
+    if (c === ch && depth === 0 && plainEq) return k;
+    if ('([{<'.includes(c)) depth++;
+    else if (')]}>'.includes(c)) depth = Math.max(0, depth - 1);
+  }
+  return -1;
+}
+
+// The declaration as shown: its header, joined across continuation lines (parameter
+// lists, class headers), without body or initializer. Whitespace is normalized so
+// the same signature reads the same on both sides of a change.
+function signatureAt(lines, i, kind, py) {
+  let text = lines[i].trim();
+  const header = kind === 'class' || kind === 'interface' || kind === 'enum';
+  for (let j = i + 1; j < lines.length && j < i + 8; j++) {
+    if (!(parens(text) > 0 || (!py && header && indexOutside(text, '{') < 0))) break;
+    text += ' ' + lines[j].trim();
+  }
+  if (py) text = text.replace(/#.*$/, '');
+  const body = py ? -1 : indexOutside(text, '{');
+  if (body >= 0) text = text.slice(0, body);
+  if (kind === 'variable' || kind === 'field') {
+    const eq = indexOutside(text, '=');
+    if (eq >= 0) text = text.slice(0, eq);
+  }
+  return text
+    .replace(/\(\s+/g, '(')
+    .replace(/\s+\)/g, ')')
+    .replace(/,\)/g, ')')
+    .replace(/\s*(=>|=|;|:|,)\s*$/, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 // [{name, kind, line}] in source order; members are "Owner.name". Comments and
 // docstrings are skipped so commented-out code does not count. Brace languages
 // take members from brace depth 1 (the class body, wherever its `{` lands, so a
@@ -388,6 +438,7 @@ function extractSymbols(filePath, source) {
   let depth = 0;
   let inComment = false;
   const lines = source.split('\n');
+  const texted = (hit, i) => ({ ...hit, text: signatureAt(lines, i, hit.kind, !!rules.docstring) });
   for (let i = 0; i < lines.length; i++) {
     let line = lines[i];
     const text = line.trim();
@@ -411,7 +462,7 @@ function extractSymbols(filePath, source) {
         owner = undefined;
         const hit = matchSymbol(rules.top, line, lineNo);
         if (!hit) continue;
-        out.push(hit);
+        out.push(texted(hit, i));
         if (hit.kind === 'class') owner = { name: hit.name, open: parens(text) };
         continue;
       }
@@ -423,7 +474,7 @@ function extractSymbols(filePath, source) {
       }
       if (indent !== owner.indent) continue;
       const hit = matchSymbol(rules.member, line, lineNo);
-      if (hit) out.push({ ...hit, name: `${owner.name}.${hit.name}` });
+      if (hit) out.push({ ...texted(hit, i), name: `${owner.name}.${hit.name}` });
       continue;
     }
     if (inComment) {
@@ -443,14 +494,14 @@ function extractSymbols(filePath, source) {
     if (line === line.trimStart()) {
       const hit = matchSymbol(rules.top, line, lineNo);
       if (hit) {
-        out.push(hit);
+        out.push(texted(hit, i));
         depth = 0; // a declaration at column 0 is top level, whatever a miscounted brace said
         // ponytail: enum bodies are not scanned (constants read like fields); methods on enums go unreported
         owner = hit.kind === 'class' || hit.kind === 'interface' ? { name: hit.name, opened: false } : undefined;
       }
     } else if (owner && owner.opened && depth === 1) {
       const hit = matchSymbol(rules.member, line, lineNo);
-      if (hit) out.push({ ...hit, name: `${owner.name}.${hit.name}` });
+      if (hit) out.push({ ...texted(hit, i), name: `${owner.name}.${hit.name}` });
     }
     const { opens, closes } = braces(line);
     depth = Math.max(0, depth + opens - closes);
@@ -462,21 +513,24 @@ function extractSymbols(filePath, source) {
   return out;
 }
 
-// Set difference by name: added (with target lines) first, then removed (base
-// lines). Overloads collapse into their name; a moved symbol is not a change.
+// Set difference by signature (owner-qualified name plus declaration text): added
+// (with target lines) first, then removed (base lines). A moved symbol is not a
+// change; a changed signature is one removed and one added, and dropping one
+// overload of a name is reported even while the other stays.
 function diffSymbols(before, after) {
-  const names = (list) => new Set(list.map((s) => s.name));
-  const was = names(before);
-  const now = names(after);
-  const firstOfName = (list) => list.filter((s, i) => list.findIndex((t) => t.name === s.name) === i);
+  const key = (s) => `${s.name} ${s.text}`;
+  const keys = (list) => new Set(list.map(key));
+  const was = keys(before);
+  const now = keys(after);
+  const firstOfKey = (list) => list.filter((s, i) => list.findIndex((t) => key(t) === key(s)) === i);
   return [
-    ...firstOfName(after).filter((s) => !was.has(s.name)).map((s) => ({ change: '+', ...s })),
-    ...firstOfName(before).filter((s) => !now.has(s.name)).map((s) => ({ change: '-', ...s })),
+    ...firstOfKey(after).filter((s) => !was.has(key(s))).map((s) => ({ change: '+', ...s })),
+    ...firstOfKey(before).filter((s) => !now.has(key(s))).map((s) => ({ change: '-', ...s })),
   ];
 }
 
-// "+ foo()" in the tree (sep = ' '), "+foo()" in the export (sep = '').
-const symbolText = (s, sep) => `${s.change === '+' ? '+' : '−'}${sep}${s.name}${s.kind === 'function' ? '()' : ''}`;
+// "+ private int max" / "− def find(id)": the declaration with its change sign.
+const symbolText = (s) => `${s.change === '+' ? '+' : '−'} ${s.text}`;
 
 // --- Review summary export ---------------------------------------------------
 
@@ -524,7 +578,10 @@ function buildSummaryMd(data) {
   const structural = data.files.filter((f) => f.symbols && f.symbols.length);
   if (structural.length) {
     lines.push('## 🧩 Structure changes', '');
-    for (const f of structural) lines.push(`- ${f.path}: ${f.symbols.map((s) => symbolText(s, '')).join(', ')}`);
+    for (const f of structural) {
+      lines.push(`- ${f.path}`);
+      for (const s of f.symbols) lines.push(`  - \`${symbolText(s)}\``);
+    }
     lines.push('');
   }
   return lines.join('\n') + '\n';
@@ -1202,8 +1259,19 @@ class CommitTreeProvider {
       return [item];
     }
     const range = await this.rangeFiles(root, ctx);
-    const nodes = range.files.length ? await this.getTreeNodes(buildTree(range.files), range.ctx) : [this.allPushedItem()];
-    return nodes;
+    if (!range.files.length) return [this.allPushedItem()];
+    return [this.collapseItem(), ...(await this.getTreeNodes(buildTree(range.files), range.ctx))];
+  }
+
+  // Heads the Combined list: one click folds every expanded file and symbol list
+  // (a webview view has no native Collapse All in its title bar).
+  collapseItem() {
+    const item = new vscode.TreeItem('Collapse all', vscode.TreeItemCollapsibleState.None);
+    item.contextValue = 'collapse';
+    item.iconPath = new vscode.ThemeIcon('collapse-all');
+    item.description = 'fold every expanded row';
+    item.command = { command: 'commitFileTree.collapseAll', title: 'Collapse All' };
+    return item;
   }
 
   // Files of the review range, honoring the Working tree checkbox (include uncommitted): when on,
@@ -1491,12 +1559,18 @@ class CommitTreeProvider {
     return diffSymbols(before, after);
   }
 
-  // "+ foo()" / "− bar" under a file. Opens the diff at the symbol's line; a removed
-  // symbol's line is on the base side, which openDiff maps onto the modified side.
+  // A declaration under a file: the icon says the kind, the label color says added
+  // or removed, the description names the enclosing class. Opens the diff at the
+  // symbol's line; a removed symbol's line is on the base side, which openDiff maps
+  // onto the modified side.
   symbolItem(s, file) {
-    const item = new vscode.TreeItem(symbolText(s, ' '), vscode.TreeItemCollapsibleState.None);
+    const item = new vscode.TreeItem(symbolText(s), vscode.TreeItemCollapsibleState.None);
     item.contextValue = 'symbol';
-    item.iconPath = new vscode.ThemeIcon(SYMBOL_ICON[s.kind], new vscode.ThemeColor(s.change === '+' ? 'charts.green' : 'charts.red'));
+    const dot = s.name.lastIndexOf('.');
+    if (dot > 0) item.description = s.name.slice(0, dot);
+    item.tooltip = s.text;
+    item.iconPath = new vscode.ThemeIcon(SYMBOL_ICON[s.kind], new vscode.ThemeColor(SYMBOL_COLOR[s.kind]));
+    item.labelColor = s.change === '+' ? 'gitDecoration.addedResourceForeground' : 'gitDecoration.deletedResourceForeground';
     const side = s.change === '-' ? ['base'] : [];
     item.command = { command: 'commitFileTree.openDiff', title: 'Open Diff', arguments: [...file.command.arguments, s.line, ...side] };
     return item;
@@ -1604,7 +1678,12 @@ async function graphRows(provider, items, parentId, byId) {
       run: !!item.command,
       lane: item.lane,
       refs: item.refs,
-      deco: deco && { badge: deco.badge, color: deco.color.id },
+      deco: deco ? { badge: deco.badge, color: deco.color.id } : item.labelColor ? { color: item.labelColor } : undefined,
+      // "+2 −1" badge on files whose declarations changed; clicking it unfolds them.
+      symbols: item.symbols && {
+        added: item.symbols.filter((s) => s.change === '+').length,
+        removed: item.symbols.filter((s) => s.change === '-').length,
+      },
     };
     if (row.open) row.children = await graphRows(provider, await provider.getChildren(item), id, byId);
     rows.push(row);
@@ -1627,7 +1706,7 @@ function graphHtml(webview, media) {
   <link rel="stylesheet" href="${src('graph.css')}">
 </head>
 <body data-vscode-context='{"preventDefaultContextMenuItems": true}'>
-  <vscode-tree indent-guides="onHover" hide-arrows indent="16"></vscode-tree>
+  <vscode-tree indent-guides="onHover" hide-arrows indent="16" expand-mode="doubleClick"></vscode-tree>
   <script type="module" nonce="${nonce}" src="${src('vscode-elements.js')}"></script>
   <script type="module" nonce="${nonce}" src="${src('graph.js')}"></script>
 </body>

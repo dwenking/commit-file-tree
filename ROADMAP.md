@@ -12,8 +12,8 @@ Solo-maintained. Discrete feature requests go to GitHub Issues; this file holds 
 
 ## Shipped
 
-- 0.4.35 — Dependency view: clicking a nested row opens its diff at the line where it imports its parent. Collapse All button in the view title (folders stay open).
-- 0.4.34 — Symbol changes: file rows expand into the functions, classes and variables added or removed (JS/TS, Python, Java), click opens the diff at that line; "Structure changes" section in the export. Static regex scan of both sides, since no language server serves `git:` URIs.
+- 0.4.35 — Dependency view: clicking a nested row opens its diff at the line where it imports its parent. "Collapse all" row at the top of Combined (folders stay open).
+- 0.4.34 — Symbol changes: a `+2 −1` badge on a file unfolds the declarations added or removed (JS/TS, Python, Java), shown as signatures with kind icons; click one to open the diff at that line; "Structure changes" section in the export. Static regex scan of both sides, since no language server serves `git:` URIs; compared by signature, so overloads and type changes show.
 - 0.4.33 — Fix: the view no longer changes height when switching modes; every mode renders in the one webview instead of swapping a webview and a native tree.
 - 0.4.32 — Fix: clicking a commit closes its hover card, which covered the files that opened under it.
 - 0.4.31 — Graph-style hover card on commits (author, dates, full message, stats, badges); covers the list and lets the pointer through, since a webview cannot draw beside it.

@@ -202,9 +202,10 @@ const cp = require('child_process');
   // Combined mode: one tree for everything unpushed (f2.js, f3.js from c2/c3)
   provider.setMode('combined');
   items = await provider.getCombined(repo);
-  // no checkbox row: the Working tree checkbox in the commits view is the only control
-  assert.deepStrictEqual(items.map((i) => i.label).sort(), ['f2.js', 'f3.js']);
-  assert.strictEqual(items[0].command.command, 'commitFileTree.openDiff');
+  // no checkbox row: the Working tree checkbox in the commits view is the only control;
+  // a "Collapse all" row heads the list
+  assert.deepStrictEqual(items.map((i) => i.label).sort(), ['Collapse all', 'f2.js', 'f3.js']);
+  assert.strictEqual(items[1].command.command, 'commitFileTree.openDiff');
 
   // A working-copy comment is counted once, even when the view itself targets the working copy
   mem['cft.comments'] = { 'working:f2.js': [{ line: 1, text: 'once' }] };
@@ -772,20 +773,22 @@ const tsSrc = [
   '}',
   'module.exports = { a: 1 };',
 ].join('\n');
+// `text` is the declaration as shown: header only, no body or initializer.
+const sym = (name, kind, line, text) => ({ name, kind, line, text });
 assert.deepStrictEqual(extractSymbols('src/a.ts', tsSrc), [
-  { name: 'PORT', kind: 'variable', line: 5 },
-  { name: 'handler', kind: 'function', line: 6 },
-  { name: 'count', kind: 'variable', line: 7 },
-  { name: 'default', kind: 'function', line: 8 },
-  { name: 'gen', kind: 'function', line: 9 },
-  { name: 'Opts', kind: 'interface', line: 10 },
-  { name: 'Id', kind: 'type', line: 11 },
-  { name: 'Color', kind: 'enum', line: 12 },
-  { name: 'Store', kind: 'class', line: 13 },
-  { name: 'Store.cache', kind: 'field', line: 14 },
-  { name: 'Store.MAX', kind: 'field', line: 15 },
-  { name: 'Store.load', kind: 'function', line: 17 },
-  { name: 'Store.onTick', kind: 'function', line: 21 },
+  sym('PORT', 'variable', 5, 'export const PORT'),
+  sym('handler', 'function', 6, 'const handler = async (req)'),
+  sym('count', 'variable', 7, 'let count: number'),
+  sym('default', 'function', 8, 'export default function ()'),
+  sym('gen', 'function', 9, 'export async function* gen()'),
+  sym('Opts', 'interface', 10, 'export interface Opts'),
+  sym('Id', 'type', 11, 'type Id = string'),
+  sym('Color', 'enum', 12, 'enum Color'),
+  sym('Store', 'class', 13, 'export abstract class Store'),
+  sym('Store.cache', 'field', 14, 'private cache'),
+  sym('Store.MAX', 'field', 15, 'static readonly MAX'),
+  sym('Store.load', 'function', 17, 'async load(id: string)'),
+  sym('Store.onTick', 'function', 21, 'onTick = ()'),
 ]);
 const pySrc = [
   '"""Module doc',
@@ -813,14 +816,14 @@ const pySrc = [
   '    pass',
 ].join('\n');
 assert.deepStrictEqual(extractSymbols('app/m.py', pySrc), [
-  { name: 'VERSION', kind: 'variable', line: 5 },
-  { name: 'TIMEOUT', kind: 'variable', line: 6 },
-  { name: 'fetch', kind: 'function', line: 11 },
-  { name: 'Repo', kind: 'class', line: 13 },
-  { name: 'Repo.table', kind: 'field', line: 15 },
-  { name: 'Repo.find', kind: 'function', line: 17 },
-  { name: 'Repo.save', kind: 'function', line: 20 },
-  { name: 'main', kind: 'function', line: 22 },
+  sym('VERSION', 'variable', 5, 'VERSION'),
+  sym('TIMEOUT', 'variable', 6, 'TIMEOUT: int'),
+  sym('fetch', 'function', 11, 'async def fetch(url)'),
+  sym('Repo', 'class', 13, 'class Repo(Base)'),
+  sym('Repo.table', 'field', 15, 'table'),
+  sym('Repo.find', 'function', 17, 'def find(id)'),
+  sym('Repo.save', 'function', 20, 'async def save(self)'),
+  sym('main', 'function', 22, 'def main()'),
 ]);
 const javaSrc = [
   'package com.x;',
@@ -854,54 +857,55 @@ const javaSrc = [
 // Members are whatever sits at brace depth 1, whatever the indentation: the class
 // header continues on a deeper-indented line, and method locals are never members.
 assert.deepStrictEqual(extractSymbols('src/UserService.java', javaSrc), [
-  { name: 'UserService', kind: 'class', line: 7 },
-  { name: 'UserService.MAX', kind: 'field', line: 9 },
-  { name: 'UserService.byName', kind: 'field', line: 10 },
-  { name: 'UserService.UserService', kind: 'function', line: 12 },
-  { name: 'UserService.find', kind: 'function', line: 16 },
-  { name: 'UserService.run', kind: 'function', line: 22 },
-  { name: 'UserService.State', kind: 'enum', line: 23 },
-  { name: 'Helper', kind: 'class', line: 25 },
-  { name: 'Helper.count', kind: 'function', line: 26 },
+  sym('UserService', 'class', 7, 'public class UserService extends Base implements Runnable'),
+  sym('UserService.MAX', 'field', 9, 'private static final int MAX'),
+  sym('UserService.byName', 'field', 10, 'private final Map<String, List<User>> byName'),
+  sym('UserService.UserService', 'function', 12, 'public UserService(Repo repo)'),
+  sym('UserService.find', 'function', 16, 'public <T> List<T> find(String name)'),
+  sym('UserService.run', 'function', 22, 'void run()'),
+  sym('UserService.State', 'enum', 23, 'enum State'),
+  sym('Helper', 'class', 25, 'class Helper'),
+  sym('Helper.count', 'function', 26, 'static int count(List<?> l)'),
 ]);
-// Allman braces: the class body opens on its own line.
+// Allman braces: the class body opens on its own line. A parameter list that
+// continues on the next line is joined into one signature.
 assert.deepStrictEqual(
-  extractSymbols('A.java', ['public class Allman', '{', '    private int a;', '    void run()', '    {', '        int local = 1;', '    }', '}'].join('\n')),
-  [
-    { name: 'Allman', kind: 'class', line: 1 },
-    { name: 'Allman.a', kind: 'field', line: 3 },
-    { name: 'Allman.run', kind: 'function', line: 4 },
-  ]
+  extractSymbols(
+    'A.java',
+    ['public class Allman', '{', '    private int a;', '    void run(', '        final String id)', '    {', '        int local = 1;', '    }', '}'].join('\n')
+  ),
+  [sym('Allman', 'class', 1, 'public class Allman'), sym('Allman.a', 'field', 3, 'private int a'), sym('Allman.run', 'function', 4, 'void run(final String id)')]
 );
 // Python: a class header may span lines and close with "):" at column 0.
 assert.deepStrictEqual(
   extractSymbols('m.py', ['class Repo(', '    Base,', '):', '    table = "x"', '    def find(self):', '        local = 1', 'X = 1'].join('\n')),
-  [
-    { name: 'Repo', kind: 'class', line: 1 },
-    { name: 'Repo.table', kind: 'field', line: 4 },
-    { name: 'Repo.find', kind: 'function', line: 5 },
-    { name: 'X', kind: 'variable', line: 7 },
-  ]
+  [sym('Repo', 'class', 1, 'class Repo(Base)'), sym('Repo.table', 'field', 4, 'table'), sym('Repo.find', 'function', 5, 'def find(self)'), sym('X', 'variable', 7, 'X')]
 );
 // Unsupported languages and oversized files yield nothing (so their rows stay leaves).
 assert.deepStrictEqual(extractSymbols('a.go', 'func main() {}'), []);
 assert.deepStrictEqual(extractSymbols('a.js', 'function a() {}' + ' '.repeat(1024 * 1024)), []);
-// Set difference by name: added first (target lines), then removed (base lines).
-// A second overload of an existing name and a moved symbol are not changes.
+// Set difference by signature: added first (target lines), then removed (base
+// lines). A moved symbol is not a change; a changed signature is one removed and
+// one added; dropping one overload of a name is reported (the other one stays).
 const symsBefore = [
-  { name: 'a', kind: 'function', line: 1 },
-  { name: 'b', kind: 'variable', line: 2 },
-  { name: 'C', kind: 'class', line: 3 },
+  sym('a', 'function', 1, 'function a()'),
+  sym('b', 'variable', 2, 'const b'),
+  sym('C', 'class', 3, 'class C'),
+  sym('R.audited', 'function', 4, 'JsonArray audited(List<Cdo> s)'),
+  sym('R.audited', 'function', 8, 'JsonObject audited(Cdo s)'),
 ];
 const symsAfter = [
-  { name: 'C', kind: 'class', line: 1 },
-  { name: 'a', kind: 'function', line: 5 },
-  { name: 'd', kind: 'function', line: 9 },
-  { name: 'a', kind: 'function', line: 12 },
+  sym('C', 'class', 1, 'class C'),
+  sym('a', 'function', 5, 'function a(x)'),
+  sym('d', 'function', 9, 'function d()'),
+  sym('R.audited', 'function', 12, 'JsonArray audited(List<Cdo> s)'),
 ];
 assert.deepStrictEqual(diffSymbols(symsBefore, symsAfter), [
-  { change: '+', name: 'd', kind: 'function', line: 9 },
-  { change: '-', name: 'b', kind: 'variable', line: 2 },
+  { change: '+', ...sym('a', 'function', 5, 'function a(x)') },
+  { change: '+', ...sym('d', 'function', 9, 'function d()') },
+  { change: '-', ...sym('a', 'function', 1, 'function a()') },
+  { change: '-', ...sym('b', 'variable', 2, 'const b') },
+  { change: '-', ...sym('R.audited', 'function', 8, 'JsonObject audited(Cdo s)') },
 ]);
 // A removed symbol's line exists only on the old side, and a diff editor selects on the
 // new side: map it through the hunks. Inside a hunk → its new-side start (the line after
@@ -911,7 +915,7 @@ const hunks = '@@ -3,2 +3,4 @@\n@@ -7,0 +10,3 @@\n@@ -10,5 +14,0 @@\n';
 assert.deepStrictEqual([1, 4, 7, 8, 12, 15, 20].map((l) => newLineFor(hunks, l)), [1, 3, 9, 13, 15, 15, 20]);
 assert.strictEqual(newLineFor('@@ -1,2 +0,0 @@\n', 1), 1);
 assert.strictEqual(newLineFor('', 7), 7);
-// Export: one "Structure changes" line per file with symbol changes; omitted when none.
+// Export: a "Structure changes" section with each file's added/removed declarations; omitted when none.
 const symMd = buildSummaryMd({
   rangeLabel: 'r',
   files: [
@@ -919,15 +923,18 @@ const symMd = buildSummaryMd({
       path: 'src/a.ts',
       comments: [],
       symbols: [
-        { change: '+', name: 'foo', kind: 'function' },
-        { change: '+', name: 'Bar', kind: 'class' },
-        { change: '-', name: 'baz', kind: 'variable' },
+        { change: '+', name: 'foo', kind: 'function', text: 'function foo(a: number)' },
+        { change: '+', name: 'Bar', kind: 'class', text: 'class Bar' },
+        { change: '-', name: 'baz', kind: 'variable', text: 'const baz' },
       ],
     },
     { path: 'src/b.ts', comments: [], symbols: [] },
   ],
 });
-assert.ok(symMd.includes('## 🧩 Structure changes\n\n- src/a.ts: +foo(), +Bar, −baz\n'), symMd);
+assert.ok(
+  symMd.includes('## 🧩 Structure changes\n\n- src/a.ts\n  - `+ function foo(a: number)`\n  - `+ class Bar`\n  - `− const baz`\n'),
+  symMd
+);
 assert.ok(!symMd.includes('src/b.ts'));
 assert.ok(!buildSummaryMd({ rangeLabel: 'r', files: [{ path: 'x', comments: [] }] }).includes('Structure'));
 
@@ -953,16 +960,24 @@ assert.ok(!buildSummaryMd({ rangeLabel: 'r', files: [{ path: 'x', comments: [] }
   assert.strictEqual(byPath('app.js').collapsibleState, 1);
   assert.strictEqual(byPath('lib.js').collapsibleState, 1);
   const syms = await provider.getChildren(byPath('lib.js'));
-  assert.deepStrictEqual(syms.map((s) => s.label), ['+ c()', '− b']);
+  // Rows show the declaration; the icon says the kind (standard symbol colors), the
+  // label color says added or removed.
+  assert.deepStrictEqual(syms.map((s) => s.label), ['+ function c()', '− const b']);
   assert.deepStrictEqual(syms.map((s) => [s.iconPath.id, s.iconPath.color.id]), [
-    ['symbol-method', 'charts.green'],
-    ['symbol-variable', 'charts.red'],
+    ['symbol-method', 'symbolIcon.methodForeground'],
+    ['symbol-variable', 'symbolIcon.variableForeground'],
   ]);
+  assert.deepStrictEqual(syms.map((s) => s.labelColor), ['gitDecoration.addedResourceForeground', 'gitDecoration.deletedResourceForeground']);
   assert.strictEqual(syms[0].command.command, 'commitFileTree.openDiff');
   assert.deepStrictEqual(syms[0].command.arguments.slice(4), [2]);
   assert.deepStrictEqual(syms[1].command.arguments.slice(4), [2, 'base']);
   const data = await provider.summaryData(repo);
   assert.deepStrictEqual(data.files.find((f) => f.path === 'lib.js').symbols.map((s) => s.change + s.name), ['+c', '-b']);
+  // Combined: a "Collapse all" row heads the list (the view title has no such button).
+  provider.mode = 'combined';
+  const combined = await provider.getChildren();
+  assert.strictEqual(combined[0].contextValue, 'collapse');
+  assert.strictEqual(combined[0].command.command, 'commitFileTree.collapseAll');
   // Dependency view: a row under lib.js is a file importing it; it opens at that import line.
   provider.mode = 'deps';
   const deps = await provider.getChildren();

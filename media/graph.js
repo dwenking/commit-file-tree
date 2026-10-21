@@ -63,6 +63,7 @@ function row(r, nested) {
     'data-id': r.id,
     'data-lane': r.lane,
     'data-context': r.context,
+    'data-run': r.run ? '1' : undefined,
     'data-vscode-context': JSON.stringify({ webviewSection: r.context, preventDefaultContextMenuItems: true, ...r.ctx }),
   });
   // Icon: a Graph lane segment + dot for commits, the TreeItem's codicon otherwise.
@@ -85,7 +86,21 @@ function row(r, nested) {
     );
     item.append(el('span', { slot: 'decoration', class: 'refs' }, ...badges));
   }
-  if (r.deco) {
+  // Files whose declarations changed: a "+2 −1" badge that unfolds them. The row's
+  // own click only opens the diff (see the select handler).
+  if (r.symbols) {
+    const parts = [];
+    if (r.symbols.added) parts.push(el('span', { class: 'ins' }, `+${r.symbols.added}`));
+    if (r.symbols.removed) parts.push(el('span', { class: 'del' }, `−${r.symbols.removed}`));
+    const badge = el('span', { slot: 'decoration', class: 'symbols', role: 'button', title: 'Show changed declarations' }, ...parts);
+    badge.addEventListener('click', (e) => {
+      e.stopPropagation();
+      e.preventDefault();
+      item.toggleAttribute('open');
+    });
+    item.append(badge);
+  }
+  if (r.deco && r.deco.badge) {
     const badge = el('span', { slot: 'decoration', class: 'status' }, r.deco.badge);
     badge.style.color = color(r.deco.color);
     item.append(badge);
@@ -249,10 +264,15 @@ new MutationObserver((records) => {
 }).observe(tree, { subtree: true, attributes: true, attributeFilter: ['open'] });
 
 // Click / Enter on a row runs its TreeItem command (open diff, show history, ...).
+// The tree's expand-mode is doubleClick, so a single click never unfolds by itself:
+// a file click only opens its diff (its symbols unfold from the badge), while rows
+// with nothing to run (commits, folders, rounds) and dependency rows unfold here.
 tree.addEventListener('vsc-tree-select', (e) => {
   const selected = Array.isArray(e.detail) ? e.detail : e.detail.selectedItems;
   const item = selected && selected[0];
-  if (item && item.dataset.id) vscode.postMessage({ type: 'run', id: item.dataset.id });
+  if (!item || !item.dataset.id) return;
+  if (item.dataset.run) vscode.postMessage({ type: 'run', id: item.dataset.id });
+  if (item.branch && (!item.dataset.run || item.dataset.context === 'depfile')) item.toggleAttribute('open');
 });
 
 vscode.postMessage({ type: 'ready' });
