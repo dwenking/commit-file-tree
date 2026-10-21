@@ -831,36 +831,58 @@ const javaSrc = [
   '@Service',
   'public class UserService extends Base',
   '    implements Runnable {',
-  '    private static final int MAX = 3;',
-  '    private final Map<String, List<User>> byName = new HashMap<>();',
-  '    @Autowired',
-  '    public UserService(Repo repo) {',
-  '        this.repo = repo;',
+  '  private static final int MAX = 3;',
+  '  private final Map<String, List<User>> byName = new HashMap<>();',
+  '  @Autowired',
+  '  public UserService(Repo repo) {',
+  '    final var local = "{"; // }',
+  '    this.repo = repo;',
+  '  }',
+  '  public <T> List<T> find(String name) {',
+  '    if (name == null) {',
+  '      return List.of();',
   '    }',
-  '    public <T> List<T> find(String name) {',
-  '        if (name == null) {',
-  '            return List.of();',
-  '        }',
-  '        return helper(name);',
-  '    }',
-  '    void run();',
-  '    enum State { ON, OFF }',
+  '    return helper(name);',
+  '  }',
+  '  void run();',
+  '  enum State { ON, OFF }',
   '}',
   'class Helper {',
-  '    static int count(List<?> l) { return l.size(); }',
+  '  static int count(List<?> l) { return l.size(); }',
   '}',
 ].join('\n');
+// Members are whatever sits at brace depth 1, whatever the indentation: the class
+// header continues on a deeper-indented line, and method locals are never members.
 assert.deepStrictEqual(extractSymbols('src/UserService.java', javaSrc), [
   { name: 'UserService', kind: 'class', line: 7 },
   { name: 'UserService.MAX', kind: 'field', line: 9 },
   { name: 'UserService.byName', kind: 'field', line: 10 },
   { name: 'UserService.UserService', kind: 'function', line: 12 },
-  { name: 'UserService.find', kind: 'function', line: 15 },
-  { name: 'UserService.run', kind: 'function', line: 21 },
-  { name: 'UserService.State', kind: 'enum', line: 22 },
-  { name: 'Helper', kind: 'class', line: 24 },
-  { name: 'Helper.count', kind: 'function', line: 25 },
+  { name: 'UserService.find', kind: 'function', line: 16 },
+  { name: 'UserService.run', kind: 'function', line: 22 },
+  { name: 'UserService.State', kind: 'enum', line: 23 },
+  { name: 'Helper', kind: 'class', line: 25 },
+  { name: 'Helper.count', kind: 'function', line: 26 },
 ]);
+// Allman braces: the class body opens on its own line.
+assert.deepStrictEqual(
+  extractSymbols('A.java', ['public class Allman', '{', '    private int a;', '    void run()', '    {', '        int local = 1;', '    }', '}'].join('\n')),
+  [
+    { name: 'Allman', kind: 'class', line: 1 },
+    { name: 'Allman.a', kind: 'field', line: 3 },
+    { name: 'Allman.run', kind: 'function', line: 4 },
+  ]
+);
+// Python: a class header may span lines and close with "):" at column 0.
+assert.deepStrictEqual(
+  extractSymbols('m.py', ['class Repo(', '    Base,', '):', '    table = "x"', '    def find(self):', '        local = 1', 'X = 1'].join('\n')),
+  [
+    { name: 'Repo', kind: 'class', line: 1 },
+    { name: 'Repo.table', kind: 'field', line: 4 },
+    { name: 'Repo.find', kind: 'function', line: 5 },
+    { name: 'X', kind: 'variable', line: 7 },
+  ]
+);
 // Unsupported languages and oversized files yield nothing (so their rows stay leaves).
 assert.deepStrictEqual(extractSymbols('a.go', 'func main() {}'), []);
 assert.deepStrictEqual(extractSymbols('a.js', 'function a() {}' + ' '.repeat(1024 * 1024)), []);

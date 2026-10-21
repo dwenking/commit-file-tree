@@ -367,51 +367,97 @@ function matchSymbol(rules, line, lineNo) {
   return undefined;
 }
 
-// [{name, kind, line}] in source order; members are "Owner.name". Block comments
-// and docstrings are skipped so commented-out code does not count.
+// Brace counts of a line, ignoring string/char/template literals and // comments.
+// ponytail: a regex literal like /{/ still miscounts; a column-0 declaration resyncs the depth
+function braces(line) {
+  const code = line.replace(/"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`|\/\/.*$/g, '');
+  return { opens: (code.match(/{/g) || []).length, closes: (code.match(/}/g) || []).length };
+}
+const parens = (text) => (text.match(/\(/g) || []).length - (text.match(/\)/g) || []).length;
+
+// [{name, kind, line}] in source order; members are "Owner.name". Comments and
+// docstrings are skipped so commented-out code does not count. Brace languages
+// take members from brace depth 1 (the class body, wherever its `{` lands, so a
+// header continued on a deeper line and method locals never count); Python takes
+// them from the body's own indentation once the header's parentheses close.
 function extractSymbols(filePath, source) {
   const rules = SYMBOL_RULES.get(path.posix.extname(filePath));
   if (!rules || source.length > SYMBOL_MAX_CHARS) return [];
   const out = [];
-  let owner; // enclosing top-level class: { name, indent of its members }
+  let owner; // enclosing top-level class: { name, opened } (braces) or { name, open, indent } (Python)
+  let depth = 0;
   let inComment = false;
   const lines = source.split('\n');
   for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
+    let line = lines[i];
     const text = line.trim();
     if (!text) continue;
+    const lineNo = i + 1;
     if (rules.docstring) {
       const toggles = (text.match(/"""|'''/g) || []).length % 2 === 1;
       if (inComment) {
         if (toggles) inComment = false;
         continue;
       }
+      if (text.startsWith('#')) continue;
       if (toggles) inComment = true; // the opening line itself may still declare (SQL = """…)
-    } else {
-      if (inComment) {
-        if (text.includes('*/')) inComment = false;
+      if (owner && owner.open > 0) {
+        // still inside a "class X(" header spanning lines; the body starts after it closes
+        owner.open += parens(text);
         continue;
       }
-      if (text.startsWith('/*')) {
-        if (!text.includes('*/')) inComment = true;
+      const indent = line.length - line.trimStart().length;
+      if (indent === 0) {
+        owner = undefined;
+        const hit = matchSymbol(rules.top, line, lineNo);
+        if (!hit) continue;
+        out.push(hit);
+        if (hit.kind === 'class') owner = { name: hit.name, open: parens(text) };
         continue;
       }
-    }
-    const indent = line.length - line.trimStart().length;
-    if (indent === 0) {
-      owner = undefined;
-      const hit = matchSymbol(rules.top, line, i + 1);
-      if (!hit) continue;
-      out.push(hit);
-      // ponytail: enum bodies are not scanned (constants read like fields); methods on enums go unreported
-      if (hit.kind === 'class' || hit.kind === 'interface') owner = { name: hit.name };
+      if (!owner) continue;
+      if (owner.indent === undefined) owner.indent = indent;
+      if (indent < owner.indent) {
+        owner = undefined;
+        continue;
+      }
+      if (indent !== owner.indent) continue;
+      const hit = matchSymbol(rules.member, line, lineNo);
+      if (hit) out.push({ ...hit, name: `${owner.name}.${hit.name}` });
       continue;
     }
-    if (!owner) continue;
-    if (owner.indent === undefined) owner.indent = indent;
-    if (indent !== owner.indent) continue;
-    const hit = matchSymbol(rules.member, line, i + 1);
-    if (hit) out.push({ ...hit, name: `${owner.name}.${hit.name}` });
+    if (inComment) {
+      if (text.includes('*/')) inComment = false;
+      continue;
+    }
+    if (text.startsWith('//')) continue;
+    if (text.startsWith('/*')) {
+      if (!text.includes('*/')) inComment = true;
+      continue;
+    }
+    const open = line.indexOf('/*');
+    if (open >= 0 && line.indexOf('*/', open) < 0) {
+      inComment = true;
+      line = line.slice(0, open);
+    }
+    if (line === line.trimStart()) {
+      const hit = matchSymbol(rules.top, line, lineNo);
+      if (hit) {
+        out.push(hit);
+        depth = 0; // a declaration at column 0 is top level, whatever a miscounted brace said
+        // ponytail: enum bodies are not scanned (constants read like fields); methods on enums go unreported
+        owner = hit.kind === 'class' || hit.kind === 'interface' ? { name: hit.name, opened: false } : undefined;
+      }
+    } else if (owner && owner.opened && depth === 1) {
+      const hit = matchSymbol(rules.member, line, lineNo);
+      if (hit) out.push({ ...hit, name: `${owner.name}.${hit.name}` });
+    }
+    const { opens, closes } = braces(line);
+    depth = Math.max(0, depth + opens - closes);
+    if (owner) {
+      if (opens) owner.opened = true;
+      if (owner.opened && depth === 0) owner = undefined;
+    }
   }
   return out;
 }
