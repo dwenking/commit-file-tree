@@ -281,6 +281,151 @@ function buildEdges(sources) {
   return edges;
 }
 
+// --- Symbol changes ------------------------------------------------------------
+// Declarations a reviewer scans a diff for: top-level functions, classes, types
+// and module variables, plus one level of class members (methods, fields).
+// Static line regexes per language: language servers serve no git: URIs, so the
+// base side can only be read this way without a checkout. Other languages (and
+// files over 1 MB) yield nothing, which keeps their rows plain leaves.
+const SYMBOL_MAX_CHARS = 1024 * 1024;
+// A variable or field whose value is an arrow or function expression is a function.
+const FN_VALUE = /^(?:async\s+)?(?:\(|function\b|\w+\s*=>)/;
+// Statement keywords that look like "name(" at member depth.
+const CONTROL = new Set(['if', 'for', 'while', 'switch', 'catch', 'return', 'new', 'else', 'do', 'try', 'throw', 'constructor', 'super', 'this']);
+const TYPE_KIND = { class: 'class', interface: 'interface', enum: 'enum', record: 'class', '@interface': 'interface' };
+const JS_MODS = '(?:(?:public|private|protected|static|readonly|abstract|override|declare|async|get|set)\\s+)*';
+const JAVA_MODS = '(?:(?:public|private|protected|static|final|abstract|synchronized|native|default|strictfp|transient|volatile|sealed|non-sealed)\\s+)*';
+const JAVA_TYPE = '[\\w.<>\\[\\],?]+(?:\\s+[\\w.<>\\[\\],?]+)*\\s+';
+const JAVA_TYPES = '(?<type>class|interface|enum|record|@interface)\\s+(?<name>\\w+)';
+// Each rule: [regex with a `name` group (optional `value` / `type` groups), kind].
+// `top` rules match at column 0, `member` rules one indent level inside a class.
+const JS_RULES = {
+  top: [
+    [/^(?:export\s+(?:default\s+)?)?(?:declare\s+)?(?:abstract\s+)?class\s+(?<name>\w*)/, 'class'],
+    [/^(?:export\s+(?:default\s+)?)?(?:declare\s+)?(?:async\s+)?function\b\s*\*?\s*(?<name>\w*)/, 'function'],
+    [/^(?:export\s+)?(?:declare\s+)?interface\s+(?<name>\w+)/, 'interface'],
+    [/^(?:export\s+)?(?:declare\s+)?(?:const\s+)?enum\s+(?<name>\w+)/, 'enum'],
+    [/^(?:export\s+)?(?:declare\s+)?type\s+(?<name>\w+)/, 'type'],
+    [/^(?:export\s+)?(?:declare\s+)?(?:const|let|var)\s+(?<name>\w+)(?:\s*:[^=]*)?(?:\s*=\s*(?<value>.*))?/, 'variable'],
+    [/^(?:module\.)?exports\.(?<name>\w+)\s*=\s*(?<value>.*)/, 'variable'],
+  ],
+  member: [
+    [new RegExp(`^\\s+${JS_MODS}\\*?\\s*(?<name>\\w+)\\s*(?:<[^>]*>)?\\s*\\(`), 'function'],
+    [new RegExp(`^\\s+${JS_MODS}(?<name>\\w+)\\s*[?!]?\\s*(?::[^=]*)?(?:=\\s*(?<value>.*)|;|$)`), 'field'],
+  ],
+};
+const PY_RULES = {
+  docstring: true,
+  top: [
+    [/^(?:async\s+)?def\s+(?<name>\w+)/, 'function'],
+    [/^class\s+(?<name>\w+)/, 'class'],
+    [/^(?<name>\w+)\s*(?::\s*\w|=(?!=))/, 'variable'],
+  ],
+  member: [
+    [/^\s+(?:async\s+)?def\s+(?<name>\w+)/, 'function'],
+    [/^\s+(?<name>\w+)\s*(?::\s*\w|=(?!=))/, 'field'],
+  ],
+};
+const JAVA_RULES = {
+  top: [[new RegExp(`^${JAVA_MODS}${JAVA_TYPES}`), null]],
+  member: [
+    [new RegExp(`^\\s+${JAVA_MODS}${JAVA_TYPES}`), null],
+    [new RegExp(`^\\s+${JAVA_MODS}(?:<[^>]+>\\s+)?(?:${JAVA_TYPE})?(?<name>\\w+)\\s*\\(`), 'function'],
+    [new RegExp(`^\\s+${JAVA_MODS}${JAVA_TYPE}(?<name>\\w+)\\s*(?:=|;)`), 'field'],
+  ],
+};
+const SYMBOL_RULES = new Map([
+  ...['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.mts', '.cts'].map((e) => [e, JS_RULES]),
+  ['.py', PY_RULES],
+  ['.java', JAVA_RULES],
+]);
+const SYMBOL_ICON = {
+  function: 'symbol-method',
+  class: 'symbol-class',
+  interface: 'symbol-interface',
+  enum: 'symbol-enum',
+  type: 'symbol-class',
+  variable: 'symbol-variable',
+  field: 'symbol-field',
+};
+
+function matchSymbol(rules, line, lineNo) {
+  for (const [re, kind] of rules) {
+    const m = re.exec(line);
+    if (!m) continue;
+    const { name = '', value, type } = m.groups;
+    if (CONTROL.has(name)) return undefined;
+    const k = type ? TYPE_KIND[type] : value !== undefined && FN_VALUE.test(value) ? 'function' : kind;
+    return { name: name || 'default', kind: k, line: lineNo };
+  }
+  return undefined;
+}
+
+// [{name, kind, line}] in source order; members are "Owner.name". Block comments
+// and docstrings are skipped so commented-out code does not count.
+function extractSymbols(filePath, source) {
+  const rules = SYMBOL_RULES.get(path.posix.extname(filePath));
+  if (!rules || source.length > SYMBOL_MAX_CHARS) return [];
+  const out = [];
+  let owner; // enclosing top-level class: { name, indent of its members }
+  let inComment = false;
+  const lines = source.split('\n');
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const text = line.trim();
+    if (!text) continue;
+    if (rules.docstring) {
+      const toggles = (text.match(/"""|'''/g) || []).length % 2 === 1;
+      if (inComment) {
+        if (toggles) inComment = false;
+        continue;
+      }
+      if (toggles) inComment = true; // the opening line itself may still declare (SQL = """…)
+    } else {
+      if (inComment) {
+        if (text.includes('*/')) inComment = false;
+        continue;
+      }
+      if (text.startsWith('/*')) {
+        if (!text.includes('*/')) inComment = true;
+        continue;
+      }
+    }
+    const indent = line.length - line.trimStart().length;
+    if (indent === 0) {
+      owner = undefined;
+      const hit = matchSymbol(rules.top, line, i + 1);
+      if (!hit) continue;
+      out.push(hit);
+      // ponytail: enum bodies are not scanned (constants read like fields); methods on enums go unreported
+      if (hit.kind === 'class' || hit.kind === 'interface') owner = { name: hit.name };
+      continue;
+    }
+    if (!owner) continue;
+    if (owner.indent === undefined) owner.indent = indent;
+    if (indent !== owner.indent) continue;
+    const hit = matchSymbol(rules.member, line, i + 1);
+    if (hit) out.push({ ...hit, name: `${owner.name}.${hit.name}` });
+  }
+  return out;
+}
+
+// Set difference by name: added (with target lines) first, then removed (base
+// lines). Overloads collapse into their name; a moved symbol is not a change.
+function diffSymbols(before, after) {
+  const names = (list) => new Set(list.map((s) => s.name));
+  const was = names(before);
+  const now = names(after);
+  const firstOfName = (list) => list.filter((s, i) => list.findIndex((t) => t.name === s.name) === i);
+  return [
+    ...firstOfName(after).filter((s) => !was.has(s.name)).map((s) => ({ change: '+', ...s })),
+    ...firstOfName(before).filter((s) => !now.has(s.name)).map((s) => ({ change: '-', ...s })),
+  ];
+}
+
+// "+ foo()" in the tree (sep = ' '), "+foo()" in the export (sep = '').
+const symbolText = (s, sep) => `${s.change === '+' ? '+' : '−'}${sep}${s.name}${s.kind === 'function' ? '()' : ''}`;
+
 // --- Review summary export ---------------------------------------------------
 
 // Quote source lines for a comment: up to 8 lines, ellipsis beyond.
@@ -322,6 +467,13 @@ function buildSummaryMd(data) {
       if (c.code) lines.push('```', c.code, '```');
       lines.push(c.text, '');
     }
+  }
+  // Declarations added/removed per file: the shape of the change without opening diffs.
+  const structural = data.files.filter((f) => f.symbols && f.symbols.length);
+  if (structural.length) {
+    lines.push('## 🧩 Structure changes', '');
+    for (const f of structural) lines.push(`- ${f.path}: ${f.symbols.map((s) => symbolText(s, '')).join(', ')}`);
+    lines.push('');
   }
   return lines.join('\n') + '\n';
 }
@@ -412,6 +564,8 @@ class CommitTreeProvider {
     this.mode = 'commits'; // 'commits' | 'combined'
     // Number of remote-history commits to show below the local (unpushed) ones.
     this.extra = 0;
+    // extractSymbols results by "ref:path"; commit refs never change, so never evicted.
+    this.symbolCache = new Map();
   }
 
   refresh() {
@@ -570,6 +724,9 @@ class CommitTreeProvider {
       }
       if (element.contextValue === 'commentgroup') {
         return element.entries.map((e) => this.commentEntryItem(element.label, e));
+      }
+      if (element.contextValue === 'file' && element.symbols) {
+        return element.symbols.map((s) => this.symbolItem(s, element));
       }
       if (element.contextValue === 'dir') {
         return this.getTreeNodes(element.node, element.ctx);
@@ -735,6 +892,7 @@ class CommitTreeProvider {
             reviewed: byRef(reviewed).length > 0,
             note: byRef(notes).join('\n---\n') || undefined,
             comments,
+            symbols: await this.symbolChanges(root, f, ctx),
           };
         })
       ),
@@ -1235,7 +1393,40 @@ class CommitTreeProvider {
     return item;
   }
 
-  getTreeNodes(node, ctx) {
+  // Declarations added/removed in a changed file between ctx.base and ctx.target,
+  // for the rows under it and the export. Per-ref results are cached; HEAD and
+  // the working copy move, so those are read every time.
+  async symbolChanges(root, f, ctx) {
+    if (!SYMBOL_RULES.has(path.posix.extname(f.path))) return [];
+    const side = async (ref, rel) => {
+      const key = `${ref}:${rel}`;
+      if (this.symbolCache.has(key)) return this.symbolCache.get(key);
+      const content = await (ref === 'working'
+        ? fs.promises.readFile(path.join(root, rel), 'utf8')
+        : git(root, ['show', `${ref}:${rel}`])
+      ).catch(() => '');
+      const syms = extractSymbols(rel, content);
+      if (ref !== 'working' && ref !== 'HEAD') this.symbolCache.set(key, syms);
+      return syms;
+    };
+    // ponytail: two git calls per file, in sequence; `git cat-file --batch` if large commits feel slow
+    const before = f.status === 'A' ? [] : await side(ctx.base, f.oldPath || f.path);
+    const after = f.status === 'D' ? [] : await side(ctx.target, f.path);
+    return diffSymbols(before, after);
+  }
+
+  // "+ foo()" / "− bar" under a file. Opens the diff at the symbol's line; a removed
+  // symbol exists only on the base side, so that version opens instead.
+  symbolItem(s, file) {
+    const item = new vscode.TreeItem(symbolText(s, ' '), vscode.TreeItemCollapsibleState.None);
+    item.contextValue = 'symbol';
+    item.iconPath = new vscode.ThemeIcon(SYMBOL_ICON[s.kind], new vscode.ThemeColor(s.change === '+' ? 'charts.green' : 'charts.red'));
+    const side = s.change === '-' ? ['base'] : [];
+    item.command = { command: 'commitFileTree.openDiff', title: 'Open Diff', arguments: [...file.command.arguments, s.line, ...side] };
+    return item;
+  }
+
+  async getTreeNodes(node, ctx) {
     const notes = this.notes();
     const dirs = [...node.dirs.entries()]
       .sort(([a], [b]) => a.localeCompare(b))
@@ -1266,9 +1457,17 @@ class CommitTreeProvider {
         if (note) item.tooltip = [item.tooltip, `📝 ${note}`].filter(Boolean).join('\n');
         return item;
       });
-    const files = node.files
-      .sort((a, b) => a.name.localeCompare(b.name))
-      .map((f) => this.fileItem(f, ctx));
+    const files = [];
+    for (const f of node.files.sort((a, b) => a.name.localeCompare(b.name))) {
+      const item = this.fileItem(f, ctx);
+      // Files whose declarations changed expand into those symbols; others stay leaves.
+      const symbols = await this.symbolChanges(this.repoRoot, f, ctx);
+      if (symbols.length) {
+        item.collapsibleState = vscode.TreeItemCollapsibleState.Collapsed;
+        item.symbols = symbols;
+      }
+      files.push(item);
+    }
     return [...dirs, ...files];
   }
 }
@@ -1875,22 +2074,25 @@ function activate(context) {
     vscode.commands.registerCommand('commitFileTree.copyMessage', (item) =>
       vscode.env.clipboard.writeText(item.subject)
     ),
-    vscode.commands.registerCommand('commitFileTree.openDiff', (filePath, status, ctx, oldPath) => {
+    // line/side come from symbol rows: open at that line; side 'base' for a removed symbol.
+    vscode.commands.registerCommand('commitFileTree.openDiff', (filePath, status, ctx, oldPath, line, side) => {
       const root = provider.repoRoot;
       if (!root) return;
       const title = `${path.basename(filePath)} (${ctx.target.slice(0, 7)})`;
+      // In a diff editor the selection lands on the modified (right) side.
+      const opts = line ? { selection: new vscode.Range(line - 1, 0, line - 1, 0) } : undefined;
+      // Deleted, or a removed symbol: no version at target — open the old content.
+      if (status === 'D' || side === 'base') {
+        return vscode.commands.executeCommand('vscode.open', gitUri(root, oldPath || filePath, ctx.base), opts);
+      }
       // Added: no base-side version (may even be a root commit) — open the new content.
       if (status === 'A') {
-        return vscode.commands.executeCommand('vscode.open', targetUri(root, filePath, ctx));
-      }
-      // Deleted: no version at target — open the old content.
-      if (status === 'D') {
-        return vscode.commands.executeCommand('vscode.open', gitUri(root, filePath, ctx.base));
+        return vscode.commands.executeCommand('vscode.open', targetUri(root, filePath, ctx), opts);
       }
       // Renames/copies: the base side lives at the old path.
       const left = gitUri(root, oldPath || filePath, ctx.base);
       const right = targetUri(root, filePath, ctx);
-      return vscode.commands.executeCommand('vscode.diff', left, right, title);
+      return vscode.commands.executeCommand('vscode.diff', left, right, title, opts);
     })
   );
 }
@@ -1908,6 +2110,8 @@ module.exports = {
   parseImports,
   resolveImport,
   buildEdges,
+  extractSymbols,
+  diffSymbols,
   buildSummaryMd,
   writeReviewFile,
   hunkOldRanges,

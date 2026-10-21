@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.34
+- Files in "By commits", Combined and the Working tree expand into the functions, classes and variables the change added (`+`, green) or removed (`−`, red): top-level declarations plus one level of class methods and fields. Click a symbol to open the file's diff at its line; a removed symbol opens the old version of the file. JavaScript/TypeScript, Python and Java; files in other languages, and files over 1 MB, stay plain rows. The scan is static (per-language regexes, no language server), so a renamed symbol shows as one removed and one added, and an extra overload of an existing name is not reported.
+- Export: a "Structure changes" section lists those symbols per file, so the agent sees the shape of the change without the diffs.
+
 ## 0.4.33
 - Fix: switching between "By commits" and the other modes no longer resizes the view in the Source Control panel. All four modes now render in the same vscode-elements webview, so VS Code no longer swaps two views with separately remembered heights. Inline actions, right-click menus, checkboxes and Reveal in Dependency View work as before. Rows in Combined, By dependencies and Comments show generic file icons instead of your icon theme's, and comment tooltips are plain text.
 - The commit hover card is more compact: at most 360px wide, smaller text and spacing, at most 8 lines of message, and stats as `+25 −5`.

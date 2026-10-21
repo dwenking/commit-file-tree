@@ -734,3 +734,196 @@ assert.deepStrictEqual(hunkOldRanges('@@ -3,2 +3,4 @@\n-x\n+y\n@@ -10 +12 @@\n-a
   assert.ok(!buildSummaryMd({ rangeLabel: 'r', files: [], previous: status }).includes('Previous round'));
   fs.rmSync(repo, { recursive: true, force: true });
 })();
+
+// --- Symbol changes (0.4.34) --------------------------------------------------
+// Static, per-language declaration scan of both sides of a change; nothing from
+// a language server (none serve git: URIs). Top level plus one class level.
+const { extractSymbols, diffSymbols } = require('./extension.js');
+const tsSrc = [
+  'import x from "./x";',
+  '/*',
+  'const old = 1;',
+  '*/',
+  'export const PORT = 3000;',
+  'const handler = async (req) => {};',
+  'let count: number;',
+  'export default function () {}',
+  'export async function* gen() {}',
+  'export interface Opts { a: number }',
+  'type Id = string;',
+  'enum Color { Red }',
+  'export abstract class Store {',
+  '  private cache = new Map();',
+  '  static readonly MAX = 3;',
+  '  constructor() {}',
+  '  async load(id: string) {',
+  '    const inner = 1;',
+  '    helper(inner);',
+  '  }',
+  '  onTick = () => {};',
+  '}',
+  'module.exports = { a: 1 };',
+].join('\n');
+assert.deepStrictEqual(extractSymbols('src/a.ts', tsSrc), [
+  { name: 'PORT', kind: 'variable', line: 5 },
+  { name: 'handler', kind: 'function', line: 6 },
+  { name: 'count', kind: 'variable', line: 7 },
+  { name: 'default', kind: 'function', line: 8 },
+  { name: 'gen', kind: 'function', line: 9 },
+  { name: 'Opts', kind: 'interface', line: 10 },
+  { name: 'Id', kind: 'type', line: 11 },
+  { name: 'Color', kind: 'enum', line: 12 },
+  { name: 'Store', kind: 'class', line: 13 },
+  { name: 'Store.cache', kind: 'field', line: 14 },
+  { name: 'Store.MAX', kind: 'field', line: 15 },
+  { name: 'Store.load', kind: 'function', line: 17 },
+  { name: 'Store.onTick', kind: 'function', line: 21 },
+]);
+const pySrc = [
+  '"""Module doc',
+  'VERSION = "in docstring"',
+  '"""',
+  'import os',
+  'VERSION = "1.0"',
+  'TIMEOUT: int = 5',
+  'x == 1',
+  'count += 1',
+  'if TYPE_CHECKING:',
+  '    def hidden(): ...',
+  'async def fetch(url):',
+  '    inner = 1',
+  'class Repo(Base):',
+  '    """Doc."""',
+  '    table = "repos"',
+  '    @staticmethod',
+  '    def find(id):',
+  '        local = 2',
+  '        return local',
+  '    async def save(self):',
+  '        pass',
+  'def main():',
+  '    pass',
+].join('\n');
+assert.deepStrictEqual(extractSymbols('app/m.py', pySrc), [
+  { name: 'VERSION', kind: 'variable', line: 5 },
+  { name: 'TIMEOUT', kind: 'variable', line: 6 },
+  { name: 'fetch', kind: 'function', line: 11 },
+  { name: 'Repo', kind: 'class', line: 13 },
+  { name: 'Repo.table', kind: 'field', line: 15 },
+  { name: 'Repo.find', kind: 'function', line: 17 },
+  { name: 'Repo.save', kind: 'function', line: 20 },
+  { name: 'main', kind: 'function', line: 22 },
+]);
+const javaSrc = [
+  'package com.x;',
+  'import java.util.*;',
+  '/**',
+  ' * Service doc; mentions build(args) here.',
+  ' */',
+  '@Service',
+  'public class UserService extends Base',
+  '    implements Runnable {',
+  '    private static final int MAX = 3;',
+  '    private final Map<String, List<User>> byName = new HashMap<>();',
+  '    @Autowired',
+  '    public UserService(Repo repo) {',
+  '        this.repo = repo;',
+  '    }',
+  '    public <T> List<T> find(String name) {',
+  '        if (name == null) {',
+  '            return List.of();',
+  '        }',
+  '        return helper(name);',
+  '    }',
+  '    void run();',
+  '    enum State { ON, OFF }',
+  '}',
+  'class Helper {',
+  '    static int count(List<?> l) { return l.size(); }',
+  '}',
+].join('\n');
+assert.deepStrictEqual(extractSymbols('src/UserService.java', javaSrc), [
+  { name: 'UserService', kind: 'class', line: 7 },
+  { name: 'UserService.MAX', kind: 'field', line: 9 },
+  { name: 'UserService.byName', kind: 'field', line: 10 },
+  { name: 'UserService.UserService', kind: 'function', line: 12 },
+  { name: 'UserService.find', kind: 'function', line: 15 },
+  { name: 'UserService.run', kind: 'function', line: 21 },
+  { name: 'UserService.State', kind: 'enum', line: 22 },
+  { name: 'Helper', kind: 'class', line: 24 },
+  { name: 'Helper.count', kind: 'function', line: 25 },
+]);
+// Unsupported languages and oversized files yield nothing (so their rows stay leaves).
+assert.deepStrictEqual(extractSymbols('a.go', 'func main() {}'), []);
+assert.deepStrictEqual(extractSymbols('a.js', 'function a() {}' + ' '.repeat(1024 * 1024)), []);
+// Set difference by name: added first (target lines), then removed (base lines).
+// A second overload of an existing name and a moved symbol are not changes.
+const symsBefore = [
+  { name: 'a', kind: 'function', line: 1 },
+  { name: 'b', kind: 'variable', line: 2 },
+  { name: 'C', kind: 'class', line: 3 },
+];
+const symsAfter = [
+  { name: 'C', kind: 'class', line: 1 },
+  { name: 'a', kind: 'function', line: 5 },
+  { name: 'd', kind: 'function', line: 9 },
+  { name: 'a', kind: 'function', line: 12 },
+];
+assert.deepStrictEqual(diffSymbols(symsBefore, symsAfter), [
+  { change: '+', name: 'd', kind: 'function', line: 9 },
+  { change: '-', name: 'b', kind: 'variable', line: 2 },
+]);
+// Export: one "Structure changes" line per file with symbol changes; omitted when none.
+const symMd = buildSummaryMd({
+  rangeLabel: 'r',
+  files: [
+    {
+      path: 'src/a.ts',
+      comments: [],
+      symbols: [
+        { change: '+', name: 'foo', kind: 'function' },
+        { change: '+', name: 'Bar', kind: 'class' },
+        { change: '-', name: 'baz', kind: 'variable' },
+      ],
+    },
+    { path: 'src/b.ts', comments: [], symbols: [] },
+  ],
+});
+assert.ok(symMd.includes('## 🧩 Structure changes\n\n- src/a.ts: +foo(), +Bar, −baz\n'), symMd);
+assert.ok(!symMd.includes('src/b.ts'));
+assert.ok(!buildSummaryMd({ rangeLabel: 'r', files: [{ path: 'x', comments: [] }] }).includes('Structure'));
+
+// Provider: file rows with symbol changes expand into +/− rows that open the diff at
+// the symbol's line; other files stay leaves.
+(async () => {
+  const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'cft-sym-'));
+  const sh = (cmd) => cp.execSync(cmd, { cwd: repo, stdio: 'pipe' });
+  sh('git init -q -b main && git config user.email t@t && git config user.name t');
+  fs.writeFileSync(path.join(repo, 'lib.js'), 'function a() {}\nconst b = 1;\n');
+  sh('git add . && git commit -qm c1');
+  fs.writeFileSync(path.join(repo, 'lib.js'), 'function a() {}\nfunction c() {}\n');
+  fs.writeFileSync(path.join(repo, 'note.txt'), 'x');
+  fs.writeFileSync(path.join(repo, 'app.js'), '// app\n\nconst lib = require("./lib");\n');
+  sh('git add . && git commit -qm c2');
+  sh('git branch up HEAD~1 && git branch --set-upstream-to=up');
+  const provider = new CommitTreeProvider();
+  Object.defineProperty(provider, 'repoRoot', { value: repo });
+  const [c2] = await provider.getCommits(repo);
+  const rows = await provider.getChildren(c2);
+  const byPath = (p) => rows.find((r) => r.filePath === p);
+  assert.strictEqual(byPath('note.txt').collapsibleState, 0);
+  assert.strictEqual(byPath('app.js').collapsibleState, 1);
+  assert.strictEqual(byPath('lib.js').collapsibleState, 1);
+  const syms = await provider.getChildren(byPath('lib.js'));
+  assert.deepStrictEqual(syms.map((s) => s.label), ['+ c()', '− b']);
+  assert.deepStrictEqual(syms.map((s) => [s.iconPath.id, s.iconPath.color.id]), [
+    ['symbol-method', 'charts.green'],
+    ['symbol-variable', 'charts.red'],
+  ]);
+  assert.strictEqual(syms[0].command.command, 'commitFileTree.openDiff');
+  assert.deepStrictEqual(syms[0].command.arguments.slice(4), [2]);
+  assert.deepStrictEqual(syms[1].command.arguments.slice(4), [2, 'base']);
+  const data = await provider.summaryData(repo);
+  assert.deepStrictEqual(data.files.find((f) => f.path === 'lib.js').symbols.map((s) => s.change + s.name), ['+c', '-b']);
+  fs.rmSync(repo, { recursive: true, force: true });
+})();
