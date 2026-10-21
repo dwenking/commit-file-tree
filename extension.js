@@ -153,23 +153,29 @@ const LANG_RES = new Map([
   ['.php', PHP_IMPORT_RES],
 ]);
 
-// Extract import specifiers from source text, by file extension.
-function parseImports(filePath, source) {
+// Import specifiers in source text, by file extension, each with its 1-based line.
+function importSpecs(filePath, source) {
   const ext = path.posix.extname(filePath);
   const specs = [];
+  const add = (spec, index) => specs.push({ spec, line: source.slice(0, index).split('\n').length });
   for (const re of LANG_RES.get(ext) || []) {
     re.lastIndex = 0;
     let m;
-    while ((m = re.exec(source))) specs.push(m[1]);
+    while ((m = re.exec(source))) add(m[1], m.index);
   }
   if (ext === '.go') {
     // single imports and import ( ... ) blocks
-    for (const m of source.matchAll(/^\s*import\s+(?:\w+\s+)?"([^"]+)"/gm)) specs.push(m[1]);
+    for (const m of source.matchAll(/^\s*import\s+(?:\w+\s+)?"([^"]+)"/gm)) add(m[1], m.index);
     for (const b of source.matchAll(/import\s*\(([^)]*)\)/g)) {
-      for (const m of b[1].matchAll(/"([^"]+)"/g)) specs.push(m[1]);
+      const start = b.index + b[0].indexOf(b[1]);
+      for (const m of b[1].matchAll(/"([^"]+)"/g)) add(m[1], start + m.index);
     }
   }
   return specs;
+}
+
+function parseImports(filePath, source) {
+  return importSpecs(filePath, source).map((s) => s.spec);
 }
 
 // Does some changed file's path (sans extension) end with this suffix?
@@ -265,18 +271,18 @@ function resolveImport(fromFile, spec, changedSet) {
   return candidates.find((c) => changedSet.has(c));
 }
 
-// Edges among changed files: {from, to} = "from imports to".
+// Edges among changed files: {from, to, line} = "from imports to", at from's first such line.
 function buildEdges(sources) {
   const changedSet = new Set(sources.keys());
   const edges = [];
   for (const [file, source] of sources) {
-    // Set: several imports (class, static, nested) can resolve to the same file.
-    const targets = new Set();
-    for (const spec of parseImports(file, source)) {
+    // Map: several imports (class, static, nested) can resolve to the same file.
+    const targets = new Map();
+    for (const { spec, line } of importSpecs(file, source)) {
       const to = resolveImport(file, spec, changedSet);
-      if (to && to !== file) targets.add(to);
+      if (to && to !== file) targets.set(to, Math.min(targets.get(to) || Infinity, line));
     }
-    for (const to of targets) edges.push({ from: file, to });
+    for (const [to, line] of targets) edges.push({ from: file, to, line });
   }
   return edges;
 }
@@ -1170,6 +1176,7 @@ class CommitTreeProvider {
       sources.set(f.path, await git(root, ['show', `${ref}:${f.path}`]).catch(() => ''));
     }
     const edges = buildEdges(sources);
+    const importLine = new Map(edges.map((e) => [`${e.from}\0${e.to}`, e.line]));
     const importers = new Map();
     const outEdges = new Map();
     const outdeg = new Map(files.map((f) => [f.path, 0]));
@@ -1192,7 +1199,7 @@ class CommitTreeProvider {
     const isolated = roots.filter((p) => !(importers.get(p) || []).length);
     const connected = roots.filter((p) => (importers.get(p) || []).length);
     const grouped = connected.length > 0 && isolated.length > 0;
-    this._deps = { ctx, importers, outEdges, grouped, isolated, meta: new Map(files.map((f) => [f.path, f])) };
+    this._deps = { ctx, importers, outEdges, importLine, grouped, isolated, meta: new Map(files.map((f) => [f.path, f])) };
     const header = [this.depSearchItem()];
     if (!connected.length) return [...header, ...roots.map((p) => this.depItem(p, [p]))];
     const items = [...header, ...connected.map((p) => this.depItem(p, [p]))];
@@ -1246,6 +1253,10 @@ class CommitTreeProvider {
     const f = { name: path.posix.basename(p), status: m.status || 'M', path: p, oldPath: m.oldPath };
     const item = this.fileItem(f, ctx);
     item.id = 'cft:dep:' + ancestry.join('|');
+    // A child row imports its parent: open it at that import line.
+    const parent = ancestry[ancestry.length - 2];
+    const line = parent && this._deps.importLine.get(`${p}\0${parent}`);
+    if (line) item.command.arguments.push(line);
     const children = (importers.get(p) || []).filter((c) => !ancestry.includes(c));
     const dir = path.posix.dirname(p);
     const parts = [dir === '.' ? '' : dir, item.description || ''];
@@ -2074,7 +2085,8 @@ function activate(context) {
     vscode.commands.registerCommand('commitFileTree.copyMessage', (item) =>
       vscode.env.clipboard.writeText(item.subject)
     ),
-    // line/side come from symbol rows: open at that line; side 'base' for a removed symbol.
+    // line: symbol rows (the declaration) and dependency rows (the import) open there;
+    // side 'base': a removed symbol, which only the old version has.
     vscode.commands.registerCommand('commitFileTree.openDiff', (filePath, status, ctx, oldPath, line, side) => {
       const root = provider.repoRoot;
       if (!root) return;

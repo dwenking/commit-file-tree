@@ -470,14 +470,22 @@ const sources = new Map([
   ['src/a.ts', `import b from './b';`],
   ['src/b.ts', `export const b = 1;`],
 ]);
-assert.deepStrictEqual(buildEdges(sources), [{ from: 'src/a.ts', to: 'src/b.ts' }]);
+assert.deepStrictEqual(buildEdges(sources), [{ from: 'src/a.ts', to: 'src/b.ts', line: 1 }]);
 // Several imports resolving to the same changed file make one edge, not one per import
 assert.deepStrictEqual(
   buildEdges(new Map([
     ['src/A.java', 'import com.x.B;\nimport static com.x.B.helper;\nimport com.x.B.Inner;\n'],
     ['src/com/x/B.java', 'package com.x;\n'],
   ])),
-  [{ from: 'src/A.java', to: 'src/com/x/B.java' }]
+  [{ from: 'src/A.java', to: 'src/com/x/B.java', line: 1 }]
+);
+// Edges carry the line of the first import of the target, also inside Go import blocks.
+assert.deepStrictEqual(
+  buildEdges(new Map([
+    ['svc/main.go', 'package main\n\nimport (\n\t"fmt"\n\tfoo "corp/mod/db"\n)\n'],
+    ['mod/db/conn.go', 'package db\n'],
+  ])),
+  [{ from: 'svc/main.go', to: 'mod/db/conn.go', line: 5 }]
 );
 
 // Summary export: action items with quoted code, plus the full file list
@@ -925,5 +933,13 @@ assert.ok(!buildSummaryMd({ rangeLabel: 'r', files: [{ path: 'x', comments: [] }
   assert.deepStrictEqual(syms[1].command.arguments.slice(4), [2, 'base']);
   const data = await provider.summaryData(repo);
   assert.deepStrictEqual(data.files.find((f) => f.path === 'lib.js').symbols.map((s) => s.change + s.name), ['+c', '-b']);
+  // Dependency view: a row under lib.js is a file importing it; it opens at that import line.
+  provider.mode = 'deps';
+  const deps = await provider.getChildren();
+  const libDep = deps.find((d) => d.filePath === 'lib.js');
+  const [appDep] = await provider.getChildren(libDep);
+  assert.strictEqual(appDep.filePath, 'app.js');
+  assert.strictEqual(appDep.command.arguments[4], 3);
+  assert.strictEqual(libDep.command.arguments[4], undefined);
   fs.rmSync(repo, { recursive: true, force: true });
 })();
