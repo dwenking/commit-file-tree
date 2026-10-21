@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.36
+- Fix: entering Combined (or any mode) now starts from the mode's default expansion — folders open, declaration lists folded. Collapse state remembered by earlier sessions or older builds no longer makes the whole tree open collapsed, which also left the expand/collapse-declarations buttons with nothing visible to do. Expanding and collapsing still survives refreshes within the mode.
+- Fix: a file's symbol marker no longer shows next to the identical hover action, so the "show changed declarations" button appears once instead of twice on a hovered row.
+
 ## 0.4.35
 - "By dependencies": a row nested under a file is a file that imports it, and clicking it now opens its diff with the cursor on that import line (the first one, when it imports the same file more than once). Top-level rows open as before.
 - Combined has two buttons above the list that expand or collapse every file's declaration list at once; folders and files themselves stay as they are.

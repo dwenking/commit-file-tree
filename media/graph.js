@@ -87,9 +87,9 @@ function row(r, nested) {
     );
     item.append(el('span', { slot: 'decoration', class: 'refs' }, ...badges));
   }
-  // Files whose declarations changed: a dim marker at rest (decorations give way to
-  // the hover actions, so it cannot be clicked) and a hover action that unfolds
-  // them. The row's own click only opens the diff (see the select handler).
+  // Files whose declarations changed: a dim marker at rest (hidden on hover via
+  // graph.css — the hover actions repeat the same icon) and a hover action that
+  // unfolds them. The row's own click only opens the diff (see the select handler).
   if (r.symbols) {
     const mark = icon('symbol-misc', 'decoration');
     mark.classList.add('symbols');
@@ -167,6 +167,13 @@ window.addEventListener('message', ({ data }) => {
   if (data.type === 'reveal') reveal = data.ids;
   if (data.type === 'root') {
     toolbar.hidden = data.mode !== 'combined';
+    // Entering a mode starts from its defaults; remembered expand state only
+    // survives refreshes within the mode. Also heals state saved by old builds.
+    if (data.mode !== state.mode) {
+      state.mode = data.mode;
+      state.open = {};
+      vscode.setState(state);
+    }
     const prev = new Map([...tree.querySelectorAll('vscode-tree-item[data-id]')].map((i) => [i.dataset.id, i]));
     const selected = [...tree.querySelectorAll('vscode-tree-item[selected]')].map((i) => i.dataset.id);
     tree.replaceChildren(...data.rows.map((r) => row(r, false)));
