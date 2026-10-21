@@ -496,6 +496,25 @@ function hunkOldRanges(diff) {
   return ranges;
 }
 
+// Old-side line → new-side line through a unified diff's hunk headers. Inside a
+// hunk: the hunk's start on the new side (the line after it for a pure deletion);
+// elsewhere: shifted by the hunks above. A diff editor selects on the new side,
+// and removed symbols only have an old-side line.
+function newLineFor(diff, oldLine) {
+  let delta = 0;
+  for (const m of diff.matchAll(/^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/gm)) {
+    const a = Number(m[1]);
+    const b = m[2] === undefined ? 1 : Number(m[2]);
+    const c = Number(m[3]);
+    const d = m[4] === undefined ? 1 : Number(m[4]);
+    // "-a,0" is an insertion after old line a: that line is still above the hunk.
+    if (b === 0 ? oldLine <= a : oldLine < a) break;
+    if (b > 0 && oldLine < a + b) return Math.max(d === 0 ? c + 1 : c, 1);
+    delta += d - b;
+  }
+  return oldLine + delta;
+}
+
 // For each comment/note of an exported round: has its code changed since?
 // addressed is true/false. Commit-based items diff their commit against the
 // working copy (so uncommitted fixes count) and check the commented span;
@@ -1427,7 +1446,7 @@ class CommitTreeProvider {
   }
 
   // "+ foo()" / "− bar" under a file. Opens the diff at the symbol's line; a removed
-  // symbol exists only on the base side, so that version opens instead.
+  // symbol's line is on the base side, which openDiff maps onto the modified side.
   symbolItem(s, file) {
     const item = new vscode.TreeItem(symbolText(s, ' '), vscode.TreeItemCollapsibleState.None);
     item.contextValue = 'symbol';
@@ -2086,20 +2105,28 @@ function activate(context) {
       vscode.env.clipboard.writeText(item.subject)
     ),
     // line: symbol rows (the declaration) and dependency rows (the import) open there;
-    // side 'base': a removed symbol, which only the old version has.
-    vscode.commands.registerCommand('commitFileTree.openDiff', (filePath, status, ctx, oldPath, line, side) => {
+    // side 'base': a removed symbol, whose line is in the old version.
+    vscode.commands.registerCommand('commitFileTree.openDiff', async (filePath, status, ctx, oldPath, line, side) => {
       const root = provider.repoRoot;
       if (!root) return;
       const title = `${path.basename(filePath)} (${ctx.target.slice(0, 7)})`;
-      // In a diff editor the selection lands on the modified (right) side.
-      const opts = line ? { selection: new vscode.Range(line - 1, 0, line - 1, 0) } : undefined;
-      // Deleted, or a removed symbol: no version at target — open the old content.
-      if (status === 'D' || side === 'base') {
+      const at = (n) => ({ selection: new vscode.Range(n - 1, 0, n - 1, 0) });
+      let opts = line ? at(line) : undefined;
+      // Deleted: no version at target — open the old content.
+      if (status === 'D') {
         return vscode.commands.executeCommand('vscode.open', gitUri(root, oldPath || filePath, ctx.base), opts);
       }
       // Added: no base-side version (may even be a root commit) — open the new content.
       if (status === 'A') {
         return vscode.commands.executeCommand('vscode.open', targetUri(root, filePath, ctx), opts);
+      }
+      // A diff editor selects on the modified (right) side; an old-side line is mapped
+      // through the file's hunks so the view lands where the symbol was removed.
+      if (side === 'base' && line) {
+        const paths = [...new Set([oldPath || filePath, filePath])];
+        const target = ctx.target === 'working' ? [] : [ctx.target];
+        const diff = await git(root, ['diff', '-U0', '-M', ctx.base, ...target, '--', ...paths]).catch(() => '');
+        opts = at(newLineFor(diff, line));
       }
       // Renames/copies: the base side lives at the old path.
       const left = gitUri(root, oldPath || filePath, ctx.base);
@@ -2127,6 +2154,7 @@ module.exports = {
   buildSummaryMd,
   writeReviewFile,
   hunkOldRanges,
+  newLineFor,
   lastRoundStatus,
   watchGitDirs,
   aggStatus,

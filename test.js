@@ -881,6 +881,14 @@ assert.deepStrictEqual(diffSymbols(symsBefore, symsAfter), [
   { change: '+', name: 'd', kind: 'function', line: 9 },
   { change: '-', name: 'b', kind: 'variable', line: 2 },
 ]);
+// A removed symbol's line exists only on the old side, and a diff editor selects on the
+// new side: map it through the hunks. Inside a hunk → its new-side start (the line after
+// it for a pure deletion); elsewhere → shifted by the hunks above.
+const { newLineFor } = require('./extension.js');
+const hunks = '@@ -3,2 +3,4 @@\n@@ -7,0 +10,3 @@\n@@ -10,5 +14,0 @@\n';
+assert.deepStrictEqual([1, 4, 7, 8, 12, 15, 20].map((l) => newLineFor(hunks, l)), [1, 3, 9, 13, 15, 15, 20]);
+assert.strictEqual(newLineFor('@@ -1,2 +0,0 @@\n', 1), 1);
+assert.strictEqual(newLineFor('', 7), 7);
 // Export: one "Structure changes" line per file with symbol changes; omitted when none.
 const symMd = buildSummaryMd({
   rangeLabel: 'r',
