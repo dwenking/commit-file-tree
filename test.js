@@ -203,8 +203,8 @@ const cp = require('child_process');
   provider.setMode('combined');
   items = await provider.getCombined(repo);
   // no checkbox row: the Working tree checkbox in the commits view is the only control;
-  // a "Collapse all" row heads the list
-  assert.deepStrictEqual(items.map((i) => i.label).sort(), ['Collapse all', 'f2.js', 'f3.js']);
+  // a "Declarations" row (expand / collapse every file's declaration list) heads the list
+  assert.deepStrictEqual(items.map((i) => i.label).sort(), ['Declarations', 'f2.js', 'f3.js']);
   assert.strictEqual(items[1].command.command, 'commitFileTree.openDiff');
 
   // A working-copy comment is counted once, even when the view itself targets the working copy
@@ -217,8 +217,8 @@ const cp = require('child_process');
   sh('mkdir -p sub && echo y > sub/a.txt');
   items = await provider.getCombined(repo);
   const dir = items.find((i) => i.contextValue === 'dir');
-  // Combined opens folded: folders start collapsed (By commits keeps them open).
-  assert.strictEqual(dir.collapsibleState, 1);
+  // Folders and files stay open by default; only the declaration lists under files start folded.
+  assert.strictEqual(dir.collapsibleState, 2);
   assert.strictEqual(dir.reviewId, `${dir.ctx.keyRef}:sub/`);
   mem['cft.notes'] = { [dir.reviewId]: 'too big' };
   items = await provider.getCombined(repo);
@@ -992,11 +992,12 @@ assert.ok(!buildSummaryMd({ rangeLabel: 'r', files: [{ path: 'x', comments: [] }
   assert.deepStrictEqual(syms[1].command.arguments.slice(4), [2, 'base']);
   const data = await provider.summaryData(repo);
   assert.deepStrictEqual(data.files.find((f) => f.path === 'lib.js').symbols.map((s) => s.change + s.name), ['Ac', 'Db']);
-  // Combined: a "Collapse all" row heads the list (the view title has no such button).
+  // Combined: a "Declarations" row heads the list; the webview draws its expand-all /
+  // collapse-all buttons, which open and close the declaration lists only.
   provider.mode = 'combined';
   const combined = await provider.getChildren();
-  assert.strictEqual(combined[0].contextValue, 'collapse');
-  assert.strictEqual(combined[0].command.command, 'commitFileTree.collapseAll');
+  assert.strictEqual(combined[0].contextValue, 'declarations');
+  assert.strictEqual(combined[0].command, undefined);
   // Dependency view: a row under lib.js is a file importing it; it opens at that import line.
   provider.mode = 'deps';
   const deps = await provider.getChildren();

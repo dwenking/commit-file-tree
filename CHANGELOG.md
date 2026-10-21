@@ -2,7 +2,7 @@
 
 ## 0.4.35
 - "By dependencies": a row nested under a file is a file that imports it, and clicking it now opens its diff with the cursor on that import line (the first one, when it imports the same file more than once). Top-level rows open as before.
-- Combined opens folded: folders start collapsed, and a "Collapse all" row at the top folds everything again once you have opened folders, files and declaration lists.
+- Combined starts with a "Declarations" row whose two buttons expand or collapse every file's declaration list at once; folders and files themselves stay as they are.
 
 ## 0.4.34
 - Files in "By commits", Combined and the Working tree whose declarations changed carry a small symbol marker at the end of the row: click it to unfold what the change did to the file's functions, classes and variables, one row each — `method audited`, `variable Javers javers`, `class LoadedCommit` — colored and badged like file rows: A added, M modified (the declaration changed, such as a parameter or a type; hover for the previous one), D removed. Top-level declarations plus one level of class methods and fields; the icon gives the kind with the Outline view's colors. Clicking the file itself only opens its diff, as before; clicking a declaration opens the diff at its line, for a removed one at the hunk where it was removed. JavaScript/TypeScript, Python and Java; files in other languages, and files over 1 MB, stay plain rows. The scan is static (per-language regexes, no language server) and compares full signatures, so dropping one overload of a method is reported.

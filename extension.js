@@ -1270,17 +1270,16 @@ class CommitTreeProvider {
     }
     const range = await this.rangeFiles(root, ctx);
     if (!range.files.length) return [this.allPushedItem()];
-    return [this.collapseItem(), ...(await this.getTreeNodes(buildTree(range.files), range.ctx))];
+    return [this.declarationsItem(), ...(await this.getTreeNodes(buildTree(range.files), range.ctx))];
   }
 
-  // Heads the Combined list: one click folds every expanded file and symbol list
-  // (a webview view has no native Collapse All in its title bar).
-  collapseItem() {
-    const item = new vscode.TreeItem('Collapse all', vscode.TreeItemCollapsibleState.None);
-    item.contextValue = 'collapse';
-    item.iconPath = new vscode.ThemeIcon('collapse-all');
-    item.description = 'fold every expanded row';
-    item.command = { command: 'commitFileTree.collapseAll', title: 'Collapse All' };
+  // Heads the Combined list; the webview draws its two buttons, which open or close
+  // every file's declaration list at once (folders and files stay as they are).
+  declarationsItem() {
+    const item = new vscode.TreeItem('Declarations', vscode.TreeItemCollapsibleState.None);
+    item.contextValue = 'declarations';
+    item.iconPath = new vscode.ThemeIcon('symbol-misc');
+    item.description = 'expand or collapse all';
     return item;
   }
 
@@ -1591,9 +1590,7 @@ class CommitTreeProvider {
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([rawName, rawChild]) => {
         const { name, node: child } = compactDir(rawName, rawChild);
-        // Combined opens folded so a large range stays scannable; a commit's few files open.
-        const state = this.mode === 'combined' ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.Expanded;
-        const item = new vscode.TreeItem(name, state);
+        const item = new vscode.TreeItem(name, vscode.TreeItemCollapsibleState.Expanded);
         item.contextValue = 'dir';
         item.node = child;
         item.ctx = ctx;
@@ -2216,7 +2213,6 @@ function activate(context) {
     vscode.commands.registerCommand('commitFileTree.revealInDeps', revealInDeps),
     vscode.commands.registerCommand('commitFileTree.findInDeps', findInDeps),
     vscode.commands.registerCommand('commitFileTree.refresh', () => provider.refresh()),
-    vscode.commands.registerCommand('commitFileTree.collapseAll', () => provider.graphView && provider.graphView.webview.postMessage({ type: 'collapse' })),
     vscode.commands.registerCommand('commitFileTree.resetReviewRange', () => provider.resetReviewRange()),
     vscode.commands.registerCommand('commitFileTree.loadMore', () => provider.loadMore()),
     vscode.commands.registerCommand('commitFileTree.hideHistory', () => provider.hideHistory()),

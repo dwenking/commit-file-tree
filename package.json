@@ -37,11 +37,6 @@
         "icon": "$(refresh)"
       },
       {
-        "command": "commitFileTree.collapseAll",
-        "title": "Collapse All",
-        "icon": "$(collapse-all)"
-      },
-      {
         "command": "commitFileTree.viewCombined",
         "title": "View All Unpushed Changes as One Tree",
         "icon": "$(list-flat)"
@@ -234,10 +229,6 @@
         }
       ],
       "commandPalette": [
-        {
-          "command": "commitFileTree.collapseAll",
-          "when": "false"
-        },
         {
           "command": "commitFileTree.loadMore",
           "when": "false"

@@ -64,6 +64,7 @@ function row(r, nested) {
     'data-lane': r.lane,
     'data-context': r.context,
     'data-run': r.run ? '1' : undefined,
+    'data-symbols': r.symbols ? '1' : undefined,
     'data-vscode-context': JSON.stringify({ webviewSection: r.context, preventDefaultContextMenuItems: true, ...r.ctx }),
   });
   // Icon: a Graph lane segment + dot for commits, the TreeItem's codicon otherwise.
@@ -85,6 +86,18 @@ function row(r, nested) {
       el('span', { class: `ref ${ref.remote ? 'remote' : 'local'}`, title: ref.name }, icon(ref.remote ? 'cloud' : 'target'), el('span', { class: 'name' }, ref.name))
     );
     item.append(el('span', { slot: 'decoration', class: 'refs' }, ...badges));
+  }
+  // The Combined list's "Declarations" row: two always-visible buttons that open or
+  // close every file's declaration list, leaving folders and files alone.
+  if (r.context === 'declarations') {
+    for (const [name, open, title] of [['expand-all', true, 'Expand all declarations'], ['collapse-all', false, 'Collapse all declarations']]) {
+      const btn = el('vscode-toolbar-button', { slot: 'decoration', icon: name, label: title, title });
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        for (const f of tree.querySelectorAll('vscode-tree-item[data-symbols]')) f.toggleAttribute('open', open);
+      });
+      item.append(btn);
+    }
   }
   // Files whose declarations changed: a small marker that unfolds them. The row's
   // own click only opens the diff (see the select handler).
@@ -173,11 +186,6 @@ window.addEventListener('message', ({ data }) => {
     delete item.dataset.lazy;
     kids(item).forEach((c) => c.remove());
     item.append(...data.rows.map((r) => row(r, true)));
-  }
-  // "Collapse all" (the Combined list's first row): close every expanded row. The
-  // open-attribute observer below records the new state.
-  if (data.type === 'collapse') {
-    for (const item of tree.querySelectorAll('vscode-tree-item[open]')) item.removeAttribute('open');
   }
   continueReveal();
   if (data.type === 'card') {
