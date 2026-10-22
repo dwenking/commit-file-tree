@@ -101,6 +101,18 @@ function row(r, nested) {
     });
     item.append(mark);
   }
+  // Comments: the export button sits at the end of the "Current round" row, next
+  // to what it exports — look the round over, then send it. Always visible, like
+  // the symbol marker, so the view needs no toolbar row of its own.
+  if (r.context === 'roundcurrent') {
+    const title = 'Export Review Summary (copy for AI)';
+    const btn = el('vscode-toolbar-button', { slot: 'decoration', icon: 'export', label: title, title });
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      vscode.postMessage({ type: 'export' });
+    });
+    item.append(btn);
+  }
   if (r.deco && r.deco.badge) {
     const badge = el('span', { slot: 'decoration', class: 'status' }, r.deco.badge);
     badge.style.color = color(r.deco.color);

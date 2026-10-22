@@ -182,11 +182,6 @@
           "group": "navigation@4"
         },
         {
-          "command": "commitFileTree.exportSummary",
-          "when": "view =~ /^commitFileTree/",
-          "group": "navigation@5"
-        },
-        {
           "command": "commitFileTree.refresh",
           "when": "view =~ /^commitFileTree/",
           "group": "navigation@6"

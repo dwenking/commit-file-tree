@@ -2104,6 +2104,8 @@ function activate(context) {
       wv.onDidDispose(() => (provider.graphView = undefined));
       wv.webview.onDidReceiveMessage(async (m) => {
         if (m.type === 'ready') return postGraph();
+        // The button on the Comments view's "Current round" row: look it over, then export it.
+        if (m.type === 'export') return exportSummary();
         const item = byId.get(m.id);
         if (!item) return;
         if (m.type === 'children') {
