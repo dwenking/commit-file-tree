@@ -941,30 +941,12 @@ const hunks = '@@ -3,2 +3,4 @@\n@@ -7,0 +10,3 @@\n@@ -10,5 +14,0 @@\n';
 assert.deepStrictEqual([1, 4, 7, 8, 12, 15, 20].map((l) => newLineFor(hunks, l)), [1, 3, 9, 13, 15, 15, 20]);
 assert.strictEqual(newLineFor('@@ -1,2 +0,0 @@\n', 1), 1);
 assert.strictEqual(newLineFor('', 7), 7);
-// Export: a "Structure changes" section with each file's added/removed declarations; omitted when none.
+// Export: the feedback only — declaration changes stay in the tree, not in the report.
 const symMd = buildSummaryMd({
   rangeLabel: 'r',
-  files: [
-    {
-      path: 'src/a.ts',
-      comments: [],
-      symbols: [
-        { change: 'A', name: 'foo', kind: 'function', text: 'function foo(a: number)' },
-        { change: 'M', name: 'Bar', kind: 'class', text: 'class Bar extends Base', was: 'class Bar' },
-        { change: 'D', name: 'baz', kind: 'variable', text: 'const baz' },
-      ],
-    },
-    { path: 'src/b.ts', comments: [], symbols: [] },
-  ],
+  files: [{ path: 'src/a.ts', comments: [], symbols: [{ change: 'A', name: 'foo', kind: 'function', text: 'function foo(a: number)' }] }],
 });
-assert.ok(
-  symMd.includes(
-    '## 🧩 Structure changes\n\n- src/a.ts\n  - added: function foo(a: number)\n  - modified: class Bar extends Base (was: class Bar)\n  - removed: const baz\n'
-  ),
-  symMd
-);
-assert.ok(!symMd.includes('src/b.ts'));
-assert.ok(!buildSummaryMd({ rangeLabel: 'r', files: [{ path: 'x', comments: [] }] }).includes('Structure'));
+assert.ok(!symMd.includes('Structure') && !symMd.includes('foo'), symMd);
 
 // Provider: file rows with symbol changes expand into +/− rows that open the diff at
 // the symbol's line; other files stay leaves.
@@ -999,8 +981,6 @@ assert.ok(!buildSummaryMd({ rangeLabel: 'r', files: [{ path: 'x', comments: [] }
   assert.strictEqual(syms[0].command.command, 'commitFileTree.openDiff');
   assert.deepStrictEqual(syms[0].command.arguments.slice(4), [2]);
   assert.deepStrictEqual(syms[1].command.arguments.slice(4), [2, 'base']);
-  const data = await provider.summaryData(repo);
-  assert.deepStrictEqual(data.files.find((f) => f.path === 'lib.js').symbols.map((s) => s.change + s.name), ['Ac', 'Db']);
   // Dependency view: a row under lib.js is a file importing it; it opens at that import line.
   provider.mode = 'deps';
   const deps = await provider.getChildren();

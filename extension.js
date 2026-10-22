@@ -540,7 +540,6 @@ function symbolLabel(s) {
   if (s.kind === 'variable' || s.kind === 'field') return `variable ${s.text.replace(MODIFIERS, '')}`;
   return `${s.kind} ${bare}`;
 }
-const CHANGE_WORD = { A: 'added', M: 'modified', D: 'removed' };
 
 // --- Review summary export ---------------------------------------------------
 
@@ -583,16 +582,6 @@ function buildSummaryMd(data) {
       if (c.code) lines.push('```', c.code, '```');
       lines.push(c.text, '');
     }
-  }
-  // Declarations added/removed per file: the shape of the change without opening diffs.
-  const structural = data.files.filter((f) => f.symbols && f.symbols.length);
-  if (structural.length) {
-    lines.push('## 🧩 Structure changes', '');
-    for (const f of structural) {
-      lines.push(`- ${f.path}`);
-      for (const s of f.symbols) lines.push(`  - ${CHANGE_WORD[s.change]}: ${s.text}${s.was ? ` (was: ${s.was})` : ''}`);
-    }
-    lines.push('');
   }
   return lines.join('\n') + '\n';
 }
@@ -1030,7 +1019,6 @@ class CommitTreeProvider {
             reviewed: byRef(reviewed).length > 0,
             note: byRef(notes).join('\n---\n') || undefined,
             comments,
-            symbols: await this.symbolChanges(root, f, ctx),
           };
         })
       ),
