@@ -199,6 +199,15 @@ vscode-tree-item[selected] > .checkbox {
   margin: 2px 0;
 }
 
+/* By dependencies: a line under an opened chain, so its last nested row and the
+   next top-level row do not run together. Collapsed rows are one line each and
+   need nothing between them, so the list keeps the tree's 22px pitch. */
+vscode-tree[data-mode='deps'] > vscode-tree-item[open] + vscode-tree-item {
+  margin-top: 2px;
+  padding-top: 2px;
+  border-top: 1px solid var(--vscode-tree-tableColumnsBorder, var(--vscode-widget-border));
+}
+
 .pending {
   font-style: italic;
   opacity: 0.6;

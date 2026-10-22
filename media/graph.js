@@ -178,6 +178,9 @@ window.addEventListener('message', ({ data }) => {
   if (data.type === 'reveal') reveal = data.ids;
   if (data.type === 'root') {
     toolbar.hidden = data.mode !== 'combined';
+    // By dependencies keeps its guides on: each import chain's extent stays visible.
+    tree.dataset.mode = data.mode;
+    tree.setAttribute('indent-guides', data.mode === 'deps' ? 'always' : 'onHover');
     // Entering a mode starts from its defaults; remembered expand state only
     // survives refreshes within the mode. Also heals state saved by old builds.
     if (data.mode !== state.mode) {
