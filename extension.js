@@ -1432,16 +1432,26 @@ class CommitTreeProvider {
     const review = await this.getReviewRange(root);
     const rangeSpec = review.base === CommitTreeProvider.EMPTY_TREE ? 'HEAD' : `${review.base}..HEAD`;
     const inRange = new Set((await git(root, ['rev-list', rangeSpec]).catch(() => '')).split('\n').filter(Boolean));
+    // Pushed commits the checkboxes pulled into the range stay in view while the
+    // history is hidden, so a widened range is never out of sight.
+    let ranged = [];
+    if (hasBase && review.base !== ctx.base) {
+      const spec = review.base === CommitTreeProvider.EMPTY_TREE ? ctx.base : `${review.base}..${ctx.base}`;
+      ranged = parseLog(await git(root, ['log', spec, '--shortstat', '--decorate=full', FORMAT]).catch(() => ''));
+    }
+    const shown = new Set(ranged.map((c) => c.sha));
+    const rest = history.filter((c) => !shown.has(c.sha));
     const items = local.map((c) => this.commitItem(c, true, inRange.has(c.sha)));
+    items.push(...ranged.map((c) => this.commitItem(c, false, true, true)));
     // Hide sits on the boundary so it is visible without scrolling past the history.
-    if (this.extra > 0) {
+    if (this.extra > 0 && rest.length) {
       const hide = new vscode.TreeItem('Hide pushed history', vscode.TreeItemCollapsibleState.None);
       hide.iconPath = new vscode.ThemeIcon('fold-up');
       hide.description = 'pushed commits below';
       hide.command = { command: 'commitFileTree.hideHistory', title: 'Hide Pushed History' };
       items.push(hide);
     }
-    items.push(...history.map((c) => this.commitItem(c, false, inRange.has(c.sha), hasBase)));
+    items.push(...rest.map((c) => this.commitItem(c, false, inRange.has(c.sha), hasBase)));
     const dirty = await this.workingTreeFiles(root);
     if (dirty.length) {
       const wt = new vscode.TreeItem('Working tree', vscode.TreeItemCollapsibleState.Collapsed);

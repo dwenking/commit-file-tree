@@ -161,7 +161,7 @@ Dependency analysis is heuristic and covers JS/TS/Vue/Svelte, Python, Java/Kotli
 
 - **Unpushed work first** — only local commits not yet on the remote (`@{upstream}..HEAD`). Remote history stays behind "Show pushed history…"; once shown, "Hide pushed history" sits right on the boundary between local and pushed commits.
 - **Working tree** — uncommitted changes (staged, unstaged, untracked) appear as a row above the commits, diffed against HEAD, so agent edits are reviewable before they are committed.
-- **Pick the review range** — every commit row has a checkbox. Unpushed commits are checked by default; open the pushed history and check an older commit to review from there (the commits in between are included, so the range stays contiguous). Combined, By dependencies, Review All, and the export follow the checked range. The Working tree checkbox includes or excludes uncommitted changes. **Reset review range** at the top returns to unpushed only.
+- **Pick the review range** — every commit row has a checkbox. Unpushed commits are checked by default; open the pushed history and check an older commit to review from there (the commits in between are included, so the range stays contiguous; they stay listed when the history is hidden again). Combined, By dependencies, Review All, and the export follow the checked range. The Working tree checkbox includes or excludes uncommitted changes. **Reset review range** at the top returns to unpushed only.
 - **Jump between modes per file** — right-click a file → **Reveal in Dependency View** switches modes, expands its import chain from the root, and selects it.
 - **Find any file in the dependency tree** — the **Search files…** row opens a fuzzy search by class or file name and reveals the file, however deep its chain is collapsed.
 - **Scope-drift risk flags** — deletions, lockfiles, CI config, env files, and build config are flagged with ⚠ and a reason.
@@ -183,7 +183,7 @@ Dependency analysis is heuristic and covers JS/TS/Vue/Svelte, Python, Java/Kotli
 
 ### Close the loop with the agent
 
-- **Export review summary** — collects every line comment (with the quoted code), note, and flag into an action-item report. Comments on files outside the change set ("this file should change too") get their own section — nothing you write is dropped.
+- **Export review summary** — the button at the end of the **Current round** row in the Comments view (look the round over, then export it) collects every line comment (with the quoted code), note, and flag into an action-item report. Comments on files outside the change set ("this file should change too") get their own section — nothing you write is dropped.
 - **Review rounds** — exporting moves delivered feedback into an exported round and keeps a timestamped copy (`.commit-review/2026-09-24_1608.md`). The export carries this round's feedback only; the ✅ / ⏳ status of the last round is shown in the Comments view.
 - **Undo** — "Undo Export" on the toast, or "Restore Last Exported Round" from the command palette, brings the last round back into the current one.
 - **Revert a commit** — right-click → revert (creates an undo commit, after confirmation) when a change should simply not exist.

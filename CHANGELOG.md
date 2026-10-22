@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.38
+- The Export button moved from the view title to the end of the **Current round** row in the Comments view: look the round over, then export it from right there. The command stays in the Command Palette.
+- "By dependencies": a separator line under an opened import chain, so its last nested file and the next top-level row no longer run together; indent guides stay on instead of appearing on hover. Collapsed rows keep the usual spacing.
+- "By commits": pushed commits that the checkboxes pulled into the review range stay listed, purple lane and checked, while the pushed history is hidden — so a widened range is never out of sight. "Show pushed history…" still reveals the rest, and "Hide pushed history" sits below the in-range commits.
+
 ## 0.4.37
 - Fix: the symbol icon could still appear twice on a row — after clicking the hover action, focus kept the action row visible next to the line-end marker. The hover action is gone; the marker itself is now the button: click it to show or hide the file's changed declarations.
 

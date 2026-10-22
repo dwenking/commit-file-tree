@@ -187,6 +187,15 @@ const cp = require('child_process');
   assert.strictEqual((await provider.getReviewRange(repo)).base, CommitTreeProvider.EMPTY_TREE); // c1 is the root
   items = await provider.getCommits(repo);
   assert.deepStrictEqual([lbl(items[0]), items[0].command.command], ['Reset review range', 'commitFileTree.resetReviewRange']);
+  // Hiding the history keeps the pushed commits inside the checked range in view
+  // (remote lane, checked), so the widened range is never forgotten; the rest stays hidden.
+  provider.hideHistory();
+  items = await provider.getCommits(repo);
+  assert.deepStrictEqual(items.map(lbl), ['Reset review range', 'c3', 'c2', 'c1', 'Show pushed history…']);
+  assert.deepStrictEqual((await graphRows(provider, items, '', new Map())).slice(1, 4).map((r) => [r.lane, r.checked]), [['local', true], ['local', true], ['remote', true]]);
+  // Showing the history lists each commit once, and nothing is left to hide.
+  provider.loadMore();
+  assert.deepStrictEqual((await provider.getCommits(repo)).map(lbl), ['Reset review range', 'c3', 'c2', 'c1']);
   provider.setMode('combined');
   assert.ok((await provider.getCombined(repo)).some((i) => i.label === 'f1'), 'combined must follow the checked range');
   // unchecking a commit narrows the range to the commits above it
