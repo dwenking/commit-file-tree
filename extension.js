@@ -1699,10 +1699,6 @@ function graphHtml(webview, media) {
   <link rel="stylesheet" href="${src('graph.css')}">
 </head>
 <body data-vscode-context='{"preventDefaultContextMenuItems": true}'>
-  <div class="toolbar" hidden>
-    <vscode-toolbar-button icon="expand-all" label="Expand all declarations" title="Expand all declarations" data-open="1"></vscode-toolbar-button>
-    <vscode-toolbar-button icon="collapse-all" label="Collapse all declarations" title="Collapse all declarations"></vscode-toolbar-button>
-  </div>
   <vscode-tree indent-guides="onHover" hide-arrows indent="16" expand-mode="doubleClick"></vscode-tree>
   <script type="module" nonce="${nonce}" src="${src('vscode-elements.js')}"></script>
   <script type="module" nonce="${nonce}" src="${src('graph.js')}"></script>

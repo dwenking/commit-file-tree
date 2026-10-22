@@ -165,19 +165,28 @@ function continueReveal() {
   }
 }
 
-// Combined only: the two buttons above the tree open or close every file's
-// declaration list at once; folders and files are left alone.
-const toolbar = document.querySelector('.toolbar');
-for (const btn of toolbar.querySelectorAll('vscode-toolbar-button')) {
-  btn.addEventListener('click', () => {
-    for (const f of tree.querySelectorAll('vscode-tree-item[data-symbols]')) f.toggleAttribute('open', !!btn.dataset.open);
-  });
+// Combined only: a "Declarations" row on top of the list says how many files
+// changed their declarations, and its two line-end buttons open or close every
+// declaration list at once; folders and files are left alone. Drawn here, not by
+// the extension: the count comes from the rows already rendered.
+function declarationsRow(n) {
+  const item = el('vscode-tree-item', { class: 'declarations', title: 'Files whose functions, classes or variables changed' });
+  item.append(icon('symbol-misc', 'icon-leaf', 'descriptionForeground'));
+  item.append(el('span', { class: 'label' }, 'Declarations'), el('span', { slot: 'description' }, plural(n, 'file')));
+  for (const [name, title, open] of [['expand-all', 'Expand all declarations', true], ['collapse-all', 'Collapse all declarations', false]]) {
+    const btn = el('vscode-toolbar-button', { slot: 'decoration', icon: name, label: title, title });
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      for (const f of tree.querySelectorAll('vscode-tree-item[data-symbols]')) f.toggleAttribute('open', open);
+    });
+    item.append(btn);
+  }
+  return item;
 }
 
 window.addEventListener('message', ({ data }) => {
   if (data.type === 'reveal') reveal = data.ids;
   if (data.type === 'root') {
-    toolbar.hidden = data.mode !== 'combined';
     // By dependencies keeps its guides on: each import chain's extent stays visible.
     tree.dataset.mode = data.mode;
     tree.setAttribute('indent-guides', data.mode === 'deps' ? 'always' : 'onHover');
@@ -191,6 +200,8 @@ window.addEventListener('message', ({ data }) => {
     const prev = new Map([...tree.querySelectorAll('vscode-tree-item[data-id]')].map((i) => [i.dataset.id, i]));
     const selected = [...tree.querySelectorAll('vscode-tree-item[selected]')].map((i) => i.dataset.id);
     tree.replaceChildren(...data.rows.map((r) => row(r, false)));
+    const withSymbols = tree.querySelectorAll('vscode-tree-item[data-symbols]').length;
+    if (data.mode === 'combined' && withSymbols) tree.prepend(declarationsRow(withSymbols));
     // A refresh keeps the selection, like the native tree.
     for (const id of selected) if (rowOf(id)) rowOf(id).selected = true;
     for (const item of tree.querySelectorAll('vscode-tree-item[open][data-lazy]')) {

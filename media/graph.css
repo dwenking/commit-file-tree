@@ -183,15 +183,13 @@ vscode-tree-item[selected] > .checkbox {
   background: var(--vscode-toolbar-hoverBackground);
 }
 
-/* Combined: expand / collapse every declaration list, above the tree. */
-.toolbar {
-  display: flex;
-  justify-content: flex-end;
-  gap: 2px;
-  padding: 2px 8px 0;
+/* Combined: the "Declarations" header row is information plus two buttons, not a
+   selectable item. */
+.declarations {
+  cursor: default;
 }
-.toolbar[hidden] {
-  display: none;
+.declarations > .label {
+  color: var(--vscode-descriptionForeground);
 }
 .card .refs {
   max-width: none;
