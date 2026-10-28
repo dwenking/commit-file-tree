@@ -138,6 +138,12 @@ const cp = require('child_process');
   sh('git checkout -q -- f1 && rm f9');
   items = await provider.getCommits(repo);
   assert.strictEqual(lbl(items[0]), 'c3'); // clean tree: no node
+  // A nested repository (a worktree under .worktrees/, say) is listed by ls-files
+  // as "dir/": not a file of this repo, so it gets no row (it used to become a
+  // folder with a nameless file that opened as a directory).
+  sh('mkdir -p nested/repo && git -C nested/repo init -q && echo x > nested/repo/a.txt');
+  assert.deepStrictEqual(await provider.workingTreeFiles(repo), []);
+  sh('rm -rf nested');
 
   provider.loadMore();
   items = await provider.getCommits(repo);

@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.4.39
+- Fix: a nested git repository inside the working tree (for example a worktree under `.worktrees/`) showed up in the Working tree and Combined views as a folder holding a nameless file that opened as "this is a directory". Git lists such a directory as one untracked entry; it belongs to the other repository and is now left out.
+
 ## 0.4.38
 - The Export button moved from the view title to the end of the **Current round** row in the Comments view: look the round over, then export it from right there. The command stays in the Command Palette.
 - "By dependencies": a separator line under an opened import chain, so its last nested file and the next top-level row no longer run together; indent guides stay on instead of appearing on hover. Collapsed rows keep the usual spacing.

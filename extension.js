@@ -897,7 +897,9 @@ class CommitTreeProvider {
       git(root, ['ls-files', '--others', '--exclude-standard']),
     ]);
     const files = parseNameStatus(diff);
-    for (const p of untracked.split('\n').filter(Boolean)) files.push({ status: 'A', path: p });
+    // A trailing slash is a nested repository (a worktree under the tree, say):
+    // its files belong to that repo, not to this diff.
+    for (const p of untracked.split('\n').filter((p) => p && !p.endsWith('/'))) files.push({ status: 'A', path: p });
     return files;
   }
 
