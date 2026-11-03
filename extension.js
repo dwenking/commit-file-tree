@@ -871,6 +871,7 @@ class CommitTreeProvider {
     const view = this.graphView;
     if (!view) return;
     let badge;
+    let rangeEmpty = false;
     try {
       const ctx = await this.getReviewRange(root);
       const files = parseNameStatus(await git(root, ['diff', '--name-status', ctx.base, ctx.target]));
@@ -879,10 +880,15 @@ class CommitTreeProvider {
       const done = new Set(Object.keys(reviewed).map((k) => k.slice(k.indexOf(':') + 1)));
       const left = files.filter((f) => !done.has(f.path)).length;
       badge = left > 0 ? { value: left, tooltip: `${left} file(s) awaiting review` } : undefined;
+      // What Combined / By dependencies would show (the Working tree checkbox counts).
+      rangeEmpty = (await this.rangeFiles(root, ctx)).files.length === 0;
     } catch (e) {
       badge = undefined;
     }
     view.badge = badge;
+    // Disables the Combined / By dependencies title buttons (package.json enablement)
+    // while there is nothing for them to show.
+    vscode.commands.executeCommand('setContext', 'commitFileTree.rangeEmpty', rangeEmpty);
   }
 
   // git's well-known empty tree: lets local-only repos diff their entire history

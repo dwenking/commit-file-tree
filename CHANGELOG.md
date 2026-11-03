@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.4.40
+- The Combined and "By dependencies" buttons in the view title are disabled (grayed out) while the review range is empty — nothing unpushed, nothing checked into the range, and no uncommitted changes to include. They come back as soon as "By commits" has something to review.
+
 ## 0.4.39
 - Fix: a nested git repository inside the working tree (for example a worktree under `.worktrees/`) showed up in the Working tree and Combined views as a folder holding a nameless file that opened as "this is a directory". Git lists such a directory as one untracked entry; it belongs to the other repository and is now left out.
 

@@ -26,7 +26,9 @@ module.exports.ThemeIcon = class {
 };
 module.exports.ThemeIcon.Folder = new module.exports.ThemeIcon('folder');
 module.exports.workspace = { workspaceFolders: undefined };
-module.exports.commands = { executeCommand: () => {} };
+// setContext calls are recorded: menu enablement in package.json keys off them.
+const contextKeys = {};
+module.exports.commands = { executeCommand: (cmd, key, value) => { if (cmd === 'setContext') contextKeys[key] = value; } };
 module.exports.ThemeColor = class {
   constructor(id) {
     this.id = id;
@@ -382,6 +384,17 @@ const cp = require('child_process');
   sh('git update-ref refs/remotes/origin/other HEAD');
   items = await provider.getCommits(repo);
   assert.strictEqual(lbl(items[0]), 'No unpushed commits');
+  // Nothing in the review range: the Combined / By dependencies title buttons are
+  // disabled through this context key (package.json enablement), until a commit is
+  // checked into the range.
+  provider.graphView = {};
+  await provider.updateBadge(repo);
+  assert.strictEqual(contextKeys['commitFileTree.rangeEmpty'], true);
+  await provider.setCommitChecked(sh('git rev-parse HEAD').toString().trim(), true);
+  await provider.updateBadge(repo);
+  assert.strictEqual(contextKeys['commitFileTree.rangeEmpty'], false);
+  await provider.resetReviewRange();
+  provider.graphView = undefined;
 
   fs.rmSync(repo, { recursive: true, force: true });
   console.log('ok');
