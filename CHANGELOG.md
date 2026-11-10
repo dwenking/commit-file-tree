@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.4.41
+- When building a view fails (a git error, an unreadable file), the view shows a "Could not load this view" row with the error message and logs it to the Extension Host output, instead of going blank as if the extension had crashed. Refresh retries.
+
 ## 0.4.40
 - The Combined and "By dependencies" buttons in the view title are disabled (grayed out) while the review range is empty — nothing unpushed, nothing checked into the range, and no uncommitted changes to include. They come back as soon as "By commits" has something to review.
 

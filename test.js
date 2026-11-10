@@ -396,6 +396,15 @@ const cp = require('child_process');
   await provider.resetReviewRange();
   provider.graphView = undefined;
 
+  // A failure while building the root (a git error, a bad file) shows as a row with
+  // the message instead of an empty view that looks like a crash.
+  provider.setMode('combined');
+  provider.rangeFiles = async () => { throw new Error('boom'); };
+  items = await provider.getChildren();
+  assert.deepStrictEqual([lbl(items[0]), items[0].description, items[0].iconPath.id], ['Could not load this view', 'boom', 'error']);
+  delete provider.rangeFiles;
+  provider.setMode('commits');
+
   fs.rmSync(repo, { recursive: true, force: true });
   console.log('ok');
 })();

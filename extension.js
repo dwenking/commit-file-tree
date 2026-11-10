@@ -859,8 +859,15 @@ class CommitTreeProvider {
         return this.getTreeNodes(element.node, element.ctx);
       }
     } catch (e) {
-      // Not a git repo, or git failed — show nothing rather than erroring.
-      return [];
+      // Children of a row: show nothing. The root: say what failed, so a git error
+      // or a bad file does not look like a crashed, empty view; Refresh retries.
+      if (element) return [];
+      console.error('Commit Review Tree: could not load the view', e);
+      const item = new vscode.TreeItem('Could not load this view', vscode.TreeItemCollapsibleState.None);
+      item.iconPath = new vscode.ThemeIcon('error', new vscode.ThemeColor('errorForeground'));
+      item.description = e && e.message ? e.message.split('\n')[0] : String(e);
+      item.tooltip = e && e.stack ? e.stack : String(e);
+      return [item];
     }
     return [];
   }
