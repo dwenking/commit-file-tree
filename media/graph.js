@@ -55,6 +55,34 @@ function checkbox(r) {
   return box;
 }
 
+// Graph cell for a commit row: 14px columns, the dot in the commit's column,
+// straight lanes passing through, curves from the dot to its parents' columns.
+const COL = 14;
+function laneSvg(g, lane) {
+  const x = (c) => c * COL + COL / 2;
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('class', 'lane');
+  svg.setAttribute('viewBox', `0 0 ${g.width * COL} 22`);
+  const path = (d, cls) => {
+    const p = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    p.setAttribute('d', d);
+    p.setAttribute('class', cls);
+    svg.append(p);
+  };
+  const cx = x(g.col);
+  for (const t of g.through) path(`M${x(t.col)} 0V22`, t.lane);
+  if (g.up) path(`M${cx} 0V11`, lane);
+  if (g.down) path(`M${cx} 11V22`, g.down);
+  for (const b of g.below) path(`M${cx} 11C${cx} 22 ${x(b.col)} 11 ${x(b.col)} 22`, b.lane);
+  const dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+  dot.setAttribute('cx', cx);
+  dot.setAttribute('cy', 11);
+  dot.setAttribute('r', 4);
+  dot.setAttribute('class', lane);
+  svg.append(dot);
+  return svg;
+}
+
 function row(r, nested) {
   const item = el('vscode-tree-item', {
     slot: nested ? 'children' : undefined,
@@ -67,10 +95,16 @@ function row(r, nested) {
     'data-symbols': r.symbols ? '1' : undefined,
     'data-vscode-context': JSON.stringify({ webviewSection: r.context, preventDefaultContextMenuItems: true, ...r.ctx }),
   });
-  // Icon: a Graph lane segment + dot for commits, the TreeItem's codicon otherwise.
+  // Icon: a Graph cell (lanes + dot) for commits, the TreeItem's codicon otherwise.
+  const graph = r.graph || { col: 0, width: 1, up: true, down: r.lane, below: [], through: [] };
+  if (r.lane) item.style.setProperty('--cols', graph.width);
   const slots = r.branch ? ['icon-branch', 'icon-branch-opened'] : ['icon-leaf'];
   for (const slot of slots) {
-    if (r.lane) item.append(el('span', { slot, class: `lane ${r.lane}` }));
+    if (r.lane) {
+      const svg = laneSvg(graph, r.lane);
+      svg.setAttribute('slot', slot);
+      item.append(svg);
+    }
     else if (r.icon === 'folder') item.append(icon(slot === 'icon-branch-opened' ? 'folder-opened' : 'folder', slot));
     else if (r.icon) item.append(icon(r.icon, slot, r.iconColor));
     else if (r.context === 'file' || r.context === 'depfile') item.append(icon('file', slot));

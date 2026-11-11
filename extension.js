@@ -47,7 +47,7 @@ function buildTree(files) {
   return root;
 }
 
-// Parse `git log --decorate=full --format=%H%x09%h%x09%an%x09%ar%x09%D%x09%s --shortstat` output.
+// Parse `git log --decorate=full --format=%H%x09%h%x09%an%x09%ar%x09%P%x09%D%x09%s --shortstat` output.
 // Each commit is a tab-separated header line, optionally followed by a
 // "N files changed, X insertions(+), Y deletions(-)" line. Branch refs become
 // Graph badges (local or remote); HEAD, */HEAD and tags are dropped.
@@ -55,13 +55,14 @@ function parseLog(output) {
   const commits = [];
   for (const line of output.split('\n')) {
     if (/^[0-9a-f]{40}\t/.test(line)) {
-      const [sha, short, author, when, decor, subject] = line.split('\t');
+      const [sha, short, author, when, parentList, decor, subject] = line.split('\t');
+      const parents = parentList.split(' ').filter(Boolean);
       const refs = decor
         .split(', ')
         .map((r) => /^(?:HEAD -> )?refs\/(heads|remotes)\/(.+)$/.exec(r))
         .filter((m) => m && !m[2].endsWith('/HEAD'))
         .map((m) => ({ name: m[2], remote: m[1] === 'remotes' }));
-      commits.push({ sha, short, author, when, refs, subject, files: 0, ins: 0, del: 0 });
+      commits.push({ sha, short, author, when, parents, refs, subject, files: 0, ins: 0, del: 0 });
     } else if (commits.length && /\d+ files? changed/.test(line)) {
       const c = commits[commits.length - 1];
       c.files = Number((line.match(/(\d+) files? changed/) || [])[1] || 0);
@@ -70,6 +71,48 @@ function parseLog(output) {
     }
   }
   return commits;
+}
+
+// Lay the commit graph out in columns, like the Source Control Graph: each slot
+// holds the sha it waits for; a commit lands in the slot waiting for it (or a
+// new one), its first parent inherits the slot, other parents join an existing
+// slot or open one. Commits must be in topological order (children first).
+// Per sha: col, width (same for every row), up (line from the top), down (lane
+// of the line continuing below, or false), below (edges from the dot to other
+// columns), through (lanes passing the row). Edge colors are the lane of the
+// commit they head to; `laneOf[sha]` is unknown for parents off the list.
+function assignLanes(commits, laneOf) {
+  const active = [];
+  const out = new Map();
+  const slot = (sha) => {
+    let i = active.indexOf(sha);
+    if (i < 0) i = active.indexOf(null);
+    if (i < 0) i = active.length;
+    return i;
+  };
+  for (const c of commits) {
+    const own = laneOf[c.sha];
+    const lane = (sha) => laneOf[sha] || own;
+    const i = slot(c.sha);
+    const up = active[i] === c.sha;
+    const before = active.slice();
+    active[i] = null;
+    const below = [];
+    c.parents.forEach((p, n) => {
+      let j = active.indexOf(p);
+      if (n === 0 && j < 0) active[(j = i)] = p;
+      else if (j < 0) active[(j = slot(p))] = p;
+      if (j !== i) below.push({ col: j, lane: lane(p) });
+    });
+    const through = [];
+    active.forEach((sha, j) => j !== i && sha && before[j] && through.push({ col: j, lane: lane(sha) }));
+    out.set(c.sha, { col: i, width: 0, up, down: active[i] ? lane(active[i]) : false, below, through });
+  }
+  // Trailing freed slots stay in `active`; the widest row sets the shared width.
+  let width = 0;
+  for (const g of out.values()) width = Math.max(width, g.col + 1, ...g.below.map((e) => e.col + 1), ...g.through.map((e) => e.col + 1));
+  for (const g of out.values()) g.width = width;
+  return out;
 }
 
 // Compact-folder collapsing: merge chains of single-child directories
@@ -1417,19 +1460,19 @@ class CommitTreeProvider {
   }
 
   async getCommits(root) {
-    const FORMAT = '--format=%H%x09%h%x09%an%x09%ar%x09%D%x09%s';
+    const FORMAT = '--format=%H%x09%h%x09%an%x09%ar%x09%P%x09%D%x09%s';
     // Local (unpushed) commits are the focus; remote history is behind "Show pushed history".
     // The base comes from getUnpushedRange so all views agree on what "unpushed" means.
     const ctx = await this.getUnpushedRange(root);
     const hasBase = ctx.base !== CommitTreeProvider.EMPTY_TREE;
     let local = [];
     if (hasBase) {
-      local = parseLog(await git(root, ['log', `${ctx.base}..HEAD`, '--shortstat', '--decorate=full', FORMAT]));
+      local = parseLog(await git(root, ['log', `${ctx.base}..HEAD`, '--topo-order', '--shortstat', '--decorate=full', FORMAT]));
     }
     let history = [];
     const historyLimit = hasBase ? this.extra : this.extra + 50;
     if (historyLimit > 0) {
-      history = parseLog(await git(root, ['log', `-${historyLimit}`, hasBase ? ctx.base : 'HEAD', '--shortstat', '--decorate=full', FORMAT]));
+      history = parseLog(await git(root, ['log', `-${historyLimit}`, hasBase ? ctx.base : 'HEAD', '--topo-order', '--shortstat', '--decorate=full', FORMAT]));
     }
     // Checkbox = in the review range (base..HEAD) that the other views show.
     const review = await this.getReviewRange(root);
@@ -1440,7 +1483,7 @@ class CommitTreeProvider {
     let ranged = [];
     if (hasBase && review.base !== ctx.base) {
       const spec = review.base === CommitTreeProvider.EMPTY_TREE ? ctx.base : `${review.base}..${ctx.base}`;
-      ranged = parseLog(await git(root, ['log', spec, '--shortstat', '--decorate=full', FORMAT]).catch(() => ''));
+      ranged = parseLog(await git(root, ['log', spec, '--topo-order', '--shortstat', '--decorate=full', FORMAT]).catch(() => ''));
     }
     const shown = new Set(ranged.map((c) => c.sha));
     const rest = history.filter((c) => !shown.has(c.sha));
@@ -1455,6 +1498,10 @@ class CommitTreeProvider {
       items.push(hide);
     }
     items.push(...rest.map((c) => this.commitItem(c, false, inRange.has(c.sha), hasBase)));
+    // Graph columns over the commit rows in display order (control rows in between just break the lines).
+    const commitItems = items.filter((i) => i.commit);
+    const lanes = assignLanes(commitItems.map((i) => i.commit), Object.fromEntries(commitItems.map((i) => [i.sha, i.lane])));
+    for (const i of commitItems) i.graph = lanes.get(i.sha);
     const dirty = await this.workingTreeFiles(root);
     if (dirty.length) {
       const wt = new vscode.TreeItem('Working tree', vscode.TreeItemCollapsibleState.Collapsed);
@@ -1688,6 +1735,7 @@ async function graphRows(provider, items, parentId, byId) {
       ctx: JSON.parse(JSON.stringify({ sha: item.sha, subject: item.subject, filePath: item.filePath })),
       run: !!item.command,
       lane: item.lane,
+      graph: item.graph,
       refs: item.refs,
       deco: deco && { badge: deco.badge, color: deco.color.id },
       // Files whose declarations changed get a marker that unfolds them.
@@ -2279,6 +2327,7 @@ module.exports = {
   parseNameStatus,
   buildTree,
   parseLog,
+  assignLanes,
   compactDir,
   riskReasons,
   parseImports,

@@ -48,7 +48,7 @@ module.exports.Range = class {
 };
 
 const assert = require('assert');
-const { parseNameStatus, buildTree, parseLog, compactDir } = require('./extension.js');
+const { parseNameStatus, buildTree, parseLog, compactDir, assignLanes } = require('./extension.js');
 
 const files = parseNameStatus('M\tsrc/a/one.js\nA\tsrc/two.js\nR100\told.js\tnew.js\nD\tREADME.md\n');
 assert.deepStrictEqual(files, [
@@ -71,12 +71,29 @@ const sha1 = 'a'.repeat(40);
 const sha2 = 'b'.repeat(40);
 const decor = 'HEAD -> refs/heads/main, refs/remotes/origin/main, refs/remotes/origin/HEAD, tag: refs/tags/v1';
 const log = parseLog(
-  `${sha1}\ta1\tAlice\t2 days ago\t${decor}\tfix: bug\n\n 3 files changed, 10 insertions(+), 2 deletions(-)\n${sha2}\tb2\tBob\t3 days ago\t\tempty commit\n`
+  `${sha1}\ta1\tAlice\t2 days ago\t${sha2} ${'c'.repeat(40)}\t${decor}\tfix: bug\n\n 3 files changed, 10 insertions(+), 2 deletions(-)\n${sha2}\tb2\tBob\t3 days ago\t\t\tempty commit\n`
 );
 assert.deepStrictEqual(log, [
-  { sha: sha1, short: 'a1', author: 'Alice', when: '2 days ago', refs: [{ name: 'main', remote: false }, { name: 'origin/main', remote: true }], subject: 'fix: bug', files: 3, ins: 10, del: 2 },
-  { sha: sha2, short: 'b2', author: 'Bob', when: '3 days ago', refs: [], subject: 'empty commit', files: 0, ins: 0, del: 0 },
+  { sha: sha1, short: 'a1', author: 'Alice', when: '2 days ago', parents: [sha2, 'c'.repeat(40)], refs: [{ name: 'main', remote: false }, { name: 'origin/main', remote: true }], subject: 'fix: bug', files: 3, ins: 10, del: 2 },
+  { sha: sha2, short: 'b2', author: 'Bob', when: '3 days ago', parents: [], refs: [], subject: 'empty commit', files: 0, ins: 0, del: 0 },
 ]);
+
+// Lane assignment (the Source Control Graph's column layout): M merges B into A's
+// line, A and B share parent C. Edges are colored by the lane of the commit they
+// head to; unknown (off-list) parents fall back to the row's own lane.
+{
+  const c = (sha, parents) => ({ sha, parents });
+  const lanes = assignLanes([c('M', ['A', 'B']), c('A', ['C']), c('B', ['C']), c('C', [])], { M: 'local', A: 'local', B: 'remote', C: 'remote' });
+  assert.deepStrictEqual(lanes.get('M'), { col: 0, width: 2, up: false, down: 'local', below: [{ col: 1, lane: 'remote' }], through: [] });
+  assert.deepStrictEqual(lanes.get('A'), { col: 0, width: 2, up: true, down: 'remote', below: [], through: [{ col: 1, lane: 'remote' }] });
+  assert.deepStrictEqual(lanes.get('B'), { col: 1, width: 2, up: true, down: false, below: [{ col: 0, lane: 'remote' }], through: [{ col: 0, lane: 'remote' }] });
+  assert.deepStrictEqual(lanes.get('C'), { col: 0, width: 2, up: true, down: false, below: [], through: [] });
+  // Two children sharing a first parent: the second one's line joins the first's below the dot;
+  // a parent that is not in the list keeps a dangling line in the row's color.
+  const fork = assignLanes([c('X', ['P']), c('Y', ['P']), c('P', ['Q'])], { X: 'local', Y: 'local', P: 'local' });
+  assert.deepStrictEqual(fork.get('Y'), { col: 1, width: 2, up: false, down: false, below: [{ col: 0, lane: 'local' }], through: [{ col: 0, lane: 'local' }] });
+  assert.deepStrictEqual(fork.get('P'), { col: 0, width: 2, up: true, down: 'local', below: [], through: [] });
+}
 
 // compactDir: a/b/c collapses into one label; stops at a dir with files
 const deep = buildTree([{ status: 'M', path: 'a/b/c/one.js' }]);
@@ -160,6 +177,8 @@ const cp = require('child_process');
     ['c3', 'local', true], ['c2', 'local', true], ['Hide pushed history', undefined, undefined], ['c1', 'remote', false],
   ]);
   assert.deepStrictEqual(rows[0].refs, [{ name: 'main', remote: false }]);
+  // graph columns ride along: a linear history is one column, HEAD has no line above it
+  assert.deepStrictEqual([rows[0].graph.width, rows[0].graph.up, rows[1].graph.up, rows[3].graph.down], [1, false, true, false]);
   assert.deepStrictEqual(rows[0].ctx, { sha: items[0].sha, subject: 'c3' });
   assert.ok(rows[0].branch && !rows[0].children, 'commit files load lazily');
   assert.ok(rows[2].run && byId.get(rows[2].id) === items[2], 'command rows resolve back to their TreeItem');

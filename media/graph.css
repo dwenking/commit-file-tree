@@ -10,38 +10,26 @@ body {
   padding: 0;
 }
 
-/* Lane: a vertical line through the row with the commit dot on it; consecutive
-   commit rows join into one line, like a Graph swimlane. Graph-narrow (14px)
-   instead of the tree's 22px icon slot. */
+/* Graph cell: 14px per column (the Graph's lane width) instead of the tree's
+   22px icon slot; the row sets --cols to the graph's width so labels line up. */
 vscode-tree-item[data-lane]::part(icon-container) {
-  min-width: 14px;
-  max-width: 14px;
+  min-width: calc(14px * var(--cols, 1));
+  max-width: calc(14px * var(--cols, 1));
   margin-right: 2px;
 }
 .lane {
   display: block;
-  position: relative;
-  width: 14px;
+  width: calc(14px * var(--cols, 1));
   height: 22px;
+  overflow: visible;
 }
-.lane::before {
-  content: '';
-  position: absolute;
-  left: 6.5px;
-  top: 0;
-  bottom: 0;
-  width: 1px;
-  background: var(--c);
+.lane path {
+  fill: none;
+  stroke: var(--c);
+  stroke-width: 1px;
 }
-.lane::after {
-  content: '';
-  position: absolute;
-  left: 3px;
-  top: 7px;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--c);
+.lane circle {
+  fill: var(--c);
 }
 .local {
   --c: var(--lane-local);

@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.4.42
+- By commits draws the real merge graph: commits sit in columns like the Source Control Graph, with lines joining where a branch was merged and splitting where it diverged. Lines keep their meaning by color — blue heads to an unpushed commit, purple to a pushed one. Commits are listed in topological order so a merged-in line always runs downward.
+
 ## 0.4.41
 - When building a view fails (a git error, an unreadable file), the view shows a "Could not load this view" row with the error message and logs it to the Extension Host output, instead of going blank as if the extension had crashed. Refresh retries.
 
