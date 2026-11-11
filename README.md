@@ -165,7 +165,7 @@ Dependency analysis is heuristic and covers JS/TS/Vue/Svelte, Python, Java/Kotli
 - **Jump between modes per file** — right-click a file → **Reveal in Dependency View** switches modes, expands its import chain from the root, and selects it.
 - **Find any file in the dependency tree** — the **Search files…** row opens a fuzzy search by class or file name and reveals the file, however deep its chain is collapsed.
 - **Scope-drift risk flags** — deletions, lockfiles, CI config, env files, and build config are flagged with ⚠ and a reason.
-- **Native styling** — SCM status colors and badges, compact folders, and a Graph-style commit list: blue lane = unpushed, purple = on the remote, branch badges at the right edge, and a hover card with the full message and stats.
+- **Native styling** — SCM status colors and badges, compact folders, and a Graph-style commit list with the real merge graph: lanes split and join where branches diverged and merged, blue = heading to an unpushed commit, purple = to one on the remote, remote branch badges and the checked-out branch at the right edge, and a hover card with the full message and stats.
 
 ### Review it like a PR
 
