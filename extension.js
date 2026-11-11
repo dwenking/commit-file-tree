@@ -50,7 +50,8 @@ function buildTree(files) {
 // Parse `git log --decorate=full --format=%H%x09%h%x09%an%x09%ar%x09%P%x09%D%x09%s --shortstat` output.
 // Each commit is a tab-separated header line, optionally followed by a
 // "N files changed, X insertions(+), Y deletions(-)" line. Branch refs become
-// Graph badges (local or remote); HEAD, */HEAD and tags are dropped.
+// Graph badges: remote branches, and the checked-out local branch ("HEAD -> ");
+// other local branches parked on a commit, */HEAD and tags are dropped.
 function parseLog(output) {
   const commits = [];
   for (const line of output.split('\n')) {
@@ -59,8 +60,9 @@ function parseLog(output) {
       const parents = parentList.split(' ').filter(Boolean);
       const refs = decor
         .split(', ')
-        .map((r) => /^(?:HEAD -> )?refs\/(heads|remotes)\/(.+)$/.exec(r))
-        .filter((m) => m && !m[2].endsWith('/HEAD'))
+        .map((r) => /^(HEAD -> )?refs\/(heads|remotes)\/(.+)$/.exec(r))
+        .filter((m) => m && !m[3].endsWith('/HEAD') && (m[1] || m[2] === 'remotes'))
+        .map((m) => m.slice(1))
         .map((m) => ({ name: m[2], remote: m[1] === 'remotes' }));
       commits.push({ sha, short, author, when, parents, refs, subject, files: 0, ins: 0, del: 0 });
     } else if (commits.length && /\d+ files? changed/.test(line)) {

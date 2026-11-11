@@ -69,7 +69,8 @@ assert.strictEqual(tree.dirs.get('src').dirs.get('a').files[0].path, 'src/a/one.
 // HEAD, origin/HEAD and tags are dropped.
 const sha1 = 'a'.repeat(40);
 const sha2 = 'b'.repeat(40);
-const decor = 'HEAD -> refs/heads/main, refs/remotes/origin/main, refs/remotes/origin/HEAD, tag: refs/tags/v1';
+// other local branches parked on the commit (refs/heads/stale) are not badges: only the checked-out one is
+const decor = 'HEAD -> refs/heads/main, refs/heads/stale, refs/remotes/origin/main, refs/remotes/origin/HEAD, tag: refs/tags/v1';
 const log = parseLog(
   `${sha1}\ta1\tAlice\t2 days ago\t${sha2} ${'c'.repeat(40)}\t${decor}\tfix: bug\n\n 3 files changed, 10 insertions(+), 2 deletions(-)\n${sha2}\tb2\tBob\t3 days ago\t\t\tempty commit\n`
 );
