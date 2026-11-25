@@ -25,8 +25,10 @@
     rows: [{ id: 'error', label: 'Could not load this view', description: error.message, tooltip: `${error.code}: ${error.message}`, icon: 'error', iconColor: 'errorForeground' }],
   });
   const ours = { ui, context, view };
+  // Orca takes plain JSON only: an undefined field (a cancelled question's value)
+  // gets the whole request refused.
   const send = (message) =>
-    orca.plugin.request('message', message).then(
+    orca.plugin.request('message', JSON.parse(JSON.stringify(message))).then(
       (messages) => messages.forEach((m) => (ours[m.type] || deliver)(m)),
       (error) => (message.type === 'ready' ? deliver(failed(error)) : console.error('Commit Review Tree:', error.code, error.message))
     );

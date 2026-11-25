@@ -20,7 +20,9 @@
   // Per file: { file, node, lines, rows, comments, note, at, open, draft }.
   let sections = [];
   let root;
-  const ask = (name, input) => orca.plugin.request(name, { root, ...input });
+  // Orca takes plain JSON only: an undefined field (a one-line comment's endLine)
+  // gets the whole request refused.
+  const ask = (name, input) => orca.plugin.request(name, JSON.parse(JSON.stringify({ root, ...input })));
 
   orca.document.onDidChange((doc) => {
     let request;
