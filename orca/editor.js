@@ -34,7 +34,7 @@
     if (!request || !Array.isArray(request.files)) {
       title.textContent = '';
       sections = [];
-      return files.replaceChildren(el('div', { class: 'empty' }, 'Pick a file in Commit Review Tree to review it here.'));
+      return files.replaceChildren();
     }
     root = request.root;
     title.textContent = request.title || '';
@@ -60,7 +60,7 @@
     const status = file.view ? '' : !file.base ? 'A' : !file.target ? 'D' : file.base.path !== file.target.path ? 'R' : 'M';
     const header = el(
       'header',
-      { title: 'Click to fold' },
+      {},
       status && el('span', { class: `status ${status}` }, status),
       el('span', { class: 'path' }, file.path),
       status === 'R' && el('span', { class: 'was' }, `← ${file.base.path}`)
@@ -76,7 +76,7 @@
       const data = await ask('diff', { file: s.file });
       s.rows = data.rows;
       s.comments = data.comments;
-      s.note = data.binary ? 'Binary file: nothing to show as text.' : data.rows.length ? '' : 'Empty file.';
+      s.note = data.binary ? 'Binary file' : data.rows.length ? '' : 'Empty file';
     } catch (e) {
       s.note = `Could not load this file: ${e.message}`;
     }
@@ -147,7 +147,7 @@
   function row(s, i, at) {
     const [type, oldLine, newLine, text] = s.rows[i];
     if (type === '~') return el('tr', { class: 'gap' }, el('td', { colspan: 3 }, `⋯ ${text}`));
-    const plus = el('button', { class: 'plus', title: 'Add a comment on this line (or on the selected lines)' }, '+');
+    const plus = el('button', { class: 'plus', title: 'Add Comment' }, '+');
     // Pressing the button must not drop the selection it is about to read.
     plus.addEventListener('mousedown', (e) => e.preventDefault());
     plus.addEventListener('click', () => compose(s, i));
@@ -161,7 +161,7 @@
   }
 
   function fold(s, from, to) {
-    const tr = el('tr', { class: 'fold', title: 'Show these lines' }, el('td', { colspan: 3 }, `⋯ ${plural(to - from, 'unchanged line')}`));
+    const tr = el('tr', { class: 'fold' }, el('td', { colspan: 3 }, `⋯ ${plural(to - from, 'unchanged line')}`));
     tr.addEventListener('click', () => {
       for (let i = from; i < to; i++) s.open.add(i);
       draw(s);
@@ -169,20 +169,21 @@
     return tr;
   }
 
-  const where = (t) => (t.endLine > t.line ? `Lines ${t.line}–${t.endLine}` : `Line ${t.line}`) + (t.side === 'old' ? ' (before the change)' : '');
+  // A comment sits under its line; only a span of lines needs saying.
+  const span = (t) => (t.endLine > t.line ? `Lines ${t.line}–${t.endLine}` : '');
 
   function threadRow(s, t) {
     const remove = el('vscode-toolbar-button', { icon: 'trash', title: 'Delete Review Comment' });
+    const texts = el('div', { class: 'texts' }, span(t) && el('div', { class: 'hint' }, span(t)), ...t.texts.map((text) => el('div', { class: 'text' }, text)));
     remove.addEventListener('click', async () => {
       try {
         s.comments = await ask('comment.delete', { file: s.file, side: t.side, line: t.line });
         draw(s);
       } catch (e) {
-        remove.closest('header').firstChild.textContent = `Could not delete: ${e.message}`;
+        texts.append(el('div', { class: 'hint' }, `Could not delete: ${e.message}`));
       }
     });
-    const bubble = el('div', { class: 'bubble' }, el('header', {}, where(t), el('span', { class: 'grow' }), remove), ...t.texts.map((text) => el('div', { class: 'text' }, text)));
-    return el('tr', { class: 'thread' }, el('td', { colspan: 3 }, bubble));
+    return el('tr', { class: 'thread' }, el('td', { colspan: 3 }, el('div', { class: 'bubble' }, texts, remove)));
   }
 
   // Start a comment on row i: on the old version for a removed line, else the new
@@ -209,14 +210,14 @@
 
   function formRow(s) {
     const draft = s.draft;
-    const field = el('vscode-textarea', { rows: 3, placeholder: 'Leave a comment for the agent' });
+    const field = el('vscode-textarea', { rows: 3 });
     field.value = draft.text;
     field.addEventListener('input', () => (draft.text = field.value));
     const close = () => {
       s.draft = undefined;
       draw(s);
     };
-    const hint = el('div', { class: 'hint' }, where({ ...draft, endLine: draft.endLine || draft.line }));
+    const hint = el('div', { class: 'hint' }, span(draft));
     const save = async () => {
       if (!field.value.trim()) return;
       try {

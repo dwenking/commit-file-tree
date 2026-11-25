@@ -202,7 +202,7 @@
       field.shadowRoot && field.shadowRoot.querySelector('input') && field.shadowRoot.querySelector('input').select();
     });
     if (m.kind === 'input') {
-      box.append(el('div', { class: 'prompt hint' }, `${m.prompt} (Enter to confirm, Escape to cancel)`));
+      box.append(el('div', { class: 'prompt hint' }, m.prompt));
       field.addEventListener('keydown', (e) => e.key === 'Enter' && !typing(e) && reply(field.value));
       return;
     }

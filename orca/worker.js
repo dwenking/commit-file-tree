@@ -312,7 +312,7 @@ function activate(orca) {
   // ponytail: one CLI spawn (~0.3 s) per load of a same-name workspace; cache
   // handle → path if that shows, drop it all once readContext carries the workspace id.
   async function focused() {
-    const none = { row: infoRow('No workspace', 'open a workspace to review its commits') };
+    const none = { row: infoRow('No workspace') };
     const context = await orca.host.call('workspace.readContext');
     if (!context) return none;
     const { workspaces } = await orca.host.call('workspace.list');
@@ -341,7 +341,7 @@ function activate(orca) {
     workspaceId = id;
     await setRoot(repo);
     if (row) return post({ type: 'root', mode: 'commits', rows: [row] });
-    if (!stateFile) return post({ type: 'root', mode: 'commits', rows: [infoRow('Not a git repository', 'this workspace has no commits to review')] });
+    if (!stateFile) return post({ type: 'root', mode: 'commits', rows: [infoRow('Not a git repository')] });
     post({ type: 'context', values: contexts });
     post({ type: 'view', ...title, root });
     await deliver({ type: 'ready' });
