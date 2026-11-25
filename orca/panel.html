@@ -1,0 +1,35 @@
+<!doctype html>
+<!-- The Orca panel: the VS Code webview's page (graphHtml in extension.js) plus what
+     VS Code draws around a webview: the view's title bar, and a place for input
+     boxes, confirmations, menus and toasts. panel.js stands in for the webview API. -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <link rel="stylesheet" href="../media/codicon.css" id="vscode-codicon-stylesheet">
+  <link rel="stylesheet" href="./theme.css">
+  <link rel="stylesheet" href="../media/graph.css">
+  <link rel="stylesheet" href="./panel.css">
+</head>
+<body>
+  <header id="bar">
+    <span id="mode"></span>
+    <vscode-badge id="badge" variant="counter" hidden></vscode-badge>
+    <span class="grow"></span>
+    <vscode-toolbar-button icon="arrow-left" data-command="goBack" title="Back to Previous View" hidden></vscode-toolbar-button>
+    <vscode-toolbar-button icon="git-commit" toggleable data-command="viewByCommits" data-mode="commits" title="View by Commits"></vscode-toolbar-button>
+    <vscode-toolbar-button icon="list-flat" toggleable data-command="viewCombined" data-mode="combined" title="View All Unpushed Changes as One Tree"></vscode-toolbar-button>
+    <vscode-toolbar-button icon="type-hierarchy" toggleable data-command="viewByDeps" data-mode="deps" title="View by Dependencies"></vscode-toolbar-button>
+    <vscode-toolbar-button icon="comment-discussion" toggleable data-command="viewComments" data-mode="comments" title="View Review Comments"></vscode-toolbar-button>
+    <vscode-toolbar-button icon="refresh" data-command="refresh" title="Refresh"></vscode-toolbar-button>
+    <vscode-toolbar-button icon="ellipsis" id="more" title="More Actions…"></vscode-toolbar-button>
+  </header>
+  <vscode-progress-bar id="busy" indeterminate hidden aria-label="Loading"></vscode-progress-bar>
+  <vscode-tree indent-guides="onHover" hide-arrows indent="16" expand-mode="doubleClick"></vscode-tree>
+  <vscode-context-menu id="menu"></vscode-context-menu>
+  <div id="ask" hidden></div>
+  <div id="toasts"></div>
+  <script src="./panel.js"></script>
+  <script type="module" src="../media/vscode-elements.js"></script>
+  <script type="module" src="../media/graph.js"></script>
+</body>
+</html>

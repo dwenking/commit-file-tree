@@ -1,0 +1,90 @@
+/* The --vscode-* theme variables that media/graph.css and vscode-elements read,
+   supplied from Orca's theme (--orca-*). A VS Code webview also styles the body. */
+:root {
+  --vscode-font-family: system-ui, sans-serif;
+  --vscode-font-size: 13px;
+  --vscode-foreground: var(--orca-foreground);
+  --vscode-descriptionForeground: var(--orca-muted-foreground);
+  --vscode-icon-foreground: var(--orca-foreground);
+  --vscode-errorForeground: var(--orca-destructive);
+  --vscode-focusBorder: var(--orca-ring);
+  --vscode-list-hoverBackground: var(--orca-accent);
+  --vscode-list-hoverForeground: var(--orca-accent-foreground);
+  --vscode-list-activeSelectionBackground: var(--orca-accent);
+  --vscode-list-activeSelectionForeground: var(--orca-accent-foreground);
+  --vscode-list-focusOutline: var(--orca-ring);
+  --vscode-tree-indentGuidesStroke: var(--orca-border);
+  --vscode-toolbar-hoverBackground: var(--orca-accent);
+  --vscode-widget-border: var(--orca-border);
+  --vscode-widget-shadow: rgb(0 0 0 / 0.25);
+  --vscode-editorHoverWidget-background: var(--orca-popover);
+  --vscode-editorHoverWidget-foreground: var(--orca-popover-foreground);
+  --vscode-editorHoverWidget-border: var(--orca-border);
+  --vscode-checkbox-background: var(--orca-background);
+  --vscode-checkbox-border: var(--orca-input);
+  --vscode-checkbox-foreground: var(--orca-foreground);
+  /* Text on a lane-colored branch badge. */
+  --vscode-scmGraph-historyItemHoverLabelForeground: #fff;
+  --vscode-button-background: var(--orca-primary);
+  --vscode-button-foreground: var(--orca-primary-foreground);
+  --vscode-button-hoverBackground: color-mix(in srgb, var(--orca-primary) 85%, var(--orca-background));
+  --vscode-button-secondaryBackground: var(--orca-secondary);
+  --vscode-button-secondaryForeground: var(--orca-secondary-foreground);
+  --vscode-button-secondaryHoverBackground: color-mix(in srgb, var(--orca-secondary) 85%, var(--orca-foreground));
+  --vscode-settings-textInputBackground: var(--orca-background);
+  --vscode-settings-textInputForeground: var(--orca-foreground);
+  --vscode-settings-textInputBorder: var(--orca-input);
+  --vscode-input-placeholderForeground: var(--orca-muted-foreground);
+  --vscode-menu-background: var(--orca-popover);
+  --vscode-menu-foreground: var(--orca-popover-foreground);
+  --vscode-menu-border: var(--orca-border);
+  --vscode-menu-separatorBackground: var(--orca-border);
+  --vscode-menu-selectionBackground: var(--orca-accent);
+  --vscode-menu-selectionForeground: var(--orca-accent-foreground);
+  --vscode-badge-background: var(--orca-secondary);
+  --vscode-badge-foreground: var(--orca-secondary-foreground);
+  --vscode-activityBarBadge-background: var(--orca-primary);
+  --vscode-activityBarBadge-foreground: var(--orca-primary-foreground);
+  --vscode-progressBar-background: var(--vscode-charts-blue);
+  /* A lit toggle button (the title bar's current mode). */
+  --vscode-inputOption-activeBackground: var(--orca-accent);
+  --vscode-inputOption-activeForeground: var(--orca-accent-foreground);
+  --vscode-inputOption-activeBorder: var(--orca-ring);
+  --vscode-editor-background: var(--orca-background);
+  --vscode-editor-foreground: var(--orca-foreground);
+  --vscode-editor-font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --vscode-editor-font-size: 12px;
+}
+
+/* Orca has no tokens for chart and git status colors: VS Code's default themes' values. */
+:root.dark {
+  --vscode-charts-blue: #3794ff;
+  --vscode-charts-purple: #b180d7;
+  --vscode-charts-green: #89d185;
+  --vscode-charts-yellow: #cca700;
+  --vscode-charts-orange: #d18616;
+  --vscode-gitDecoration-addedResourceForeground: #81b88b;
+  --vscode-gitDecoration-modifiedResourceForeground: #e2c08d;
+  --vscode-gitDecoration-deletedResourceForeground: #c74e39;
+  --vscode-gitDecoration-renamedResourceForeground: #73c991;
+  --vscode-gitDecoration-ignoredResourceForeground: #8c8c8c;
+}
+:root.light {
+  --vscode-charts-blue: #1a85ff;
+  --vscode-charts-purple: #652d90;
+  --vscode-charts-green: #388a34;
+  --vscode-charts-yellow: #bf8803;
+  --vscode-charts-orange: #d18616;
+  --vscode-gitDecoration-addedResourceForeground: #587c0c;
+  --vscode-gitDecoration-modifiedResourceForeground: #895503;
+  --vscode-gitDecoration-deletedResourceForeground: #ad0707;
+  --vscode-gitDecoration-renamedResourceForeground: #007100;
+  --vscode-gitDecoration-ignoredResourceForeground: #8e8e90;
+}
+
+body {
+  margin: 0;
+  background: var(--orca-background);
+  color: var(--vscode-foreground);
+  font: var(--vscode-font-size) var(--vscode-font-family);
+}

@@ -1,0 +1,18 @@
+<!doctype html>
+<!-- The review editor: what VS Code's diff editor and its comment threads are to the
+     extension. Orca opens it on .commit-review/review.crdiff, the request the worker
+     writes when a file is clicked (see `show` in worker.js); editor.js draws it. -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <link rel="stylesheet" href="../media/codicon.css" id="vscode-codicon-stylesheet">
+  <link rel="stylesheet" href="./theme.css">
+  <link rel="stylesheet" href="./editor.css">
+</head>
+<body>
+  <h1 id="title"></h1>
+  <main id="files"></main>
+  <script type="module" src="../media/vscode-elements.js"></script>
+  <script src="./editor.js"></script>
+</body>
+</html>

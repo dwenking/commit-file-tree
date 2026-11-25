@@ -1,0 +1,168 @@
+/* What VS Code draws around the webview, drawn by the panel: the view's title bar,
+   the input box / pick list / confirmation, the right-click menu and toasts. */
+
+/* Title bar: the mode's name and the awaiting-review count on the left (the view's
+   description and badge), the view's buttons on the right. */
+#bar {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 28px;
+  padding: 0 6px 0 10px;
+  background: var(--orca-background);
+  border-bottom: 1px solid var(--vscode-widget-border);
+}
+#mode {
+  overflow: hidden;
+  color: var(--vscode-descriptionForeground);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+#badge {
+  margin-left: 6px;
+}
+.grow {
+  flex: 1;
+}
+#bar vscode-toolbar-button[disabled] {
+  opacity: 0.4;
+  pointer-events: none;
+}
+[hidden] {
+  display: none !important;
+}
+
+/* Loading, as a view shows it: a moving line under the title bar, taking no room. */
+#busy {
+  position: sticky;
+  top: 29px;
+  z-index: 5;
+  display: block;
+  height: 2px;
+  margin-bottom: -2px;
+}
+
+/* Right-click menu, at the pointer. */
+#menu {
+  position: fixed;
+  z-index: 30;
+}
+
+/* Input box, pick list and confirmation: over the top of the view, like the
+   workbench's quick input. A confirmation dims the view until it is answered. */
+#ask {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 32px 8px 8px;
+}
+#ask.modal {
+  background: rgb(0 0 0 / 0.3);
+}
+#ask .box {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 520px;
+  max-height: 100%;
+  padding: 8px;
+  border: 1px solid var(--vscode-widget-border);
+  border-radius: 6px;
+  background: var(--vscode-editorHoverWidget-background);
+  color: var(--vscode-editorHoverWidget-foreground);
+  box-shadow: 0 4px 16px var(--vscode-widget-shadow);
+}
+#ask vscode-textfield {
+  width: 100%;
+}
+#ask .prompt {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+#ask .hint {
+  color: var(--vscode-descriptionForeground);
+  font-size: 12px;
+}
+#ask .picks {
+  min-height: 0;
+  overflow-y: auto;
+}
+#ask .pick {
+  display: flex;
+  gap: 8px;
+  padding: 3px 6px;
+  border-radius: 3px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+#ask .pick .description {
+  overflow: hidden;
+  color: var(--vscode-descriptionForeground);
+  text-overflow: ellipsis;
+}
+#ask .pick.active,
+#ask .pick:hover {
+  background: var(--vscode-list-activeSelectionBackground);
+  color: var(--vscode-list-activeSelectionForeground);
+}
+#ask .buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+/* Toasts: bottom of the view, newest last. */
+#toasts {
+  position: fixed;
+  right: 8px;
+  bottom: 8px;
+  left: 8px;
+  z-index: 15;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  pointer-events: none;
+}
+.toast {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 6px 4px 6px 8px;
+  border: 1px solid var(--vscode-widget-border);
+  border-radius: 6px;
+  background: var(--vscode-editorHoverWidget-background);
+  color: var(--vscode-editorHoverWidget-foreground);
+  box-shadow: 0 2px 8px var(--vscode-widget-shadow);
+  pointer-events: auto;
+}
+.toast > vscode-icon {
+  flex: none;
+  margin-top: 1px;
+}
+.toast.warning > vscode-icon {
+  color: var(--vscode-charts-yellow);
+}
+.toast.error > vscode-icon {
+  color: var(--vscode-errorForeground);
+}
+.toast .text {
+  flex: 1;
+  min-width: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.toast .actions {
+  display: flex;
+  flex: none;
+  gap: 4px;
+}

@@ -1,0 +1,43 @@
+{
+  "manifestVersion": 2,
+  "id": "commit-file-tree",
+  "name": "Commit Review Tree",
+  "version": "0.1.0",
+  "description": "Review AI-generated commits like a PR: unpushed work as file trees (by commit, combined, or by dependencies), line comments, reviewed checkmarks, risk flags, and one-click export of feedback for your agent.",
+  "author": {
+    "name": "dwenking",
+    "url": "https://github.com/dwenking"
+  },
+  "license": "MIT",
+  "repository": "https://github.com/dwenking/commit-file-tree",
+  "icon": "icon.png",
+  "engines": {
+    "orca": ">=1.4.247"
+  },
+  "execution": "trusted-worker",
+  "pluginApi": 1,
+  "main": "orca/worker.js",
+  "contributes": {
+    "panels": [
+      {
+        "id": "review",
+        "title": "Commit Review Tree",
+        "icon": "branch",
+        "entry": "orca/panel.html"
+      }
+    ],
+    "customEditors": [
+      {
+        "id": "diff",
+        "title": "Review",
+        "extensions": [".crdiff"],
+        "entry": "orca/editor.html"
+      }
+    ]
+  },
+  "capabilities": [
+    {
+      "kind": "workspace:read"
+    }
+  ]
+}
