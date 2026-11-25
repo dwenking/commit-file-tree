@@ -937,6 +937,7 @@ class CommitTreeProvider {
     } catch (e) {
       badge = undefined;
     }
+    if (root !== this.repoRoot) return; // counted for a repository the view has left
     view.badge = badge;
     // Disables the Combined / By dependencies title buttons (package.json enablement)
     // while there is nothing for them to show.
@@ -1863,13 +1864,16 @@ async function watchGitDirs(root, onChange) {
     }
   }
   const watchers = [];
+  // A watcher that fails later (its directory is removed) just stops: an 'error'
+  // event nobody listens to would be an uncaught exception.
+  const watch = (dir, options) => watchers.push(fs.watch(dir, options, onChange).on('error', () => {}));
   for (const dir of dirs) {
     try {
-      watchers.push(fs.watch(dir, { recursive: true }, onChange));
+      watch(dir, { recursive: true });
     } catch (e) {
       // ponytail: no recursive watch on this platform → fall back to the old flat watch
       try {
-        watchers.push(fs.watch(dir, onChange));
+        watch(dir, {});
       } catch (e2) {
         // dir vanished between rev-parse and watch
       }
@@ -2147,9 +2151,11 @@ function activate(context) {
     const wv = provider.graphView;
     if (!wv) return;
     const mode = provider.mode;
+    const root = provider.repoRoot;
     const ids = new Map();
     const rows = await graphRows(provider, await provider.getChildren(), '', ids);
     if (mode !== provider.mode) return; // a quicker switch already posted the newer mode
+    if (root !== provider.repoRoot) return; // rows of a repository the view has left (Orca: the focused workspace changed)
     byId = ids;
     wv.webview.postMessage({ type: 'root', rows, mode });
   }
@@ -2175,8 +2181,10 @@ function activate(context) {
           wv.webview.postMessage({ type: 'card', id: m.id, card: await provider.commitCard(provider.repoRoot, item.commit) });
         }
         // Commit checkboxes set the review range; the Working tree one includes uncommitted changes.
-        if (m.type === 'check' && item.contextValue === 'worktree') provider.setIncludeLocal(m.checked);
-        if (m.type === 'check' && item.contextValue === 'commit') provider.setCommitChecked(item.sha, m.checked);
+        // Returned so a failure reaches whoever delivered the message (the Orca worker
+        // must not leave a rejection unhandled; VS Code ignores the result).
+        if (m.type === 'check' && item.contextValue === 'worktree') return provider.setIncludeLocal(m.checked);
+        if (m.type === 'check' && item.contextValue === 'commit') return provider.setCommitChecked(item.sha, m.checked);
         if (m.type === 'run' && item.command) vscode.commands.executeCommand(item.command.command, ...(item.command.arguments || []));
         if (m.type === 'action') vscode.commands.executeCommand(m.command, item);
       });
@@ -2326,6 +2334,7 @@ function deactivate() {}
 module.exports = {
   activate,
   deactivate,
+  git,
   parseNameStatus,
   buildTree,
   parseLog,
