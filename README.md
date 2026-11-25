@@ -111,6 +111,7 @@ Each export becomes a round. The latest round marks every item ✅ (code changed
 - [Requirements](#requirements)
 - [Installation](#installation)
 - [Getting Started](#getting-started)
+- [Orca](#orca)
 - [Configuration](#configuration)
 - [Commands](#commands)
 - [Data and Privacy](#data-and-privacy)
@@ -245,6 +246,29 @@ Revert the dependency bump.
 2. Find the **COMMIT REVIEW TREE** section below the built-in Changes/Graph sections. It may start collapsed at the bottom — click its header to expand it, or drag the header upward to pin it.
 3. Click a commit row to expand its file tree. Hover a row for the review-all and revert buttons; right-click for copy and revert actions.
 4. Switch modes with the buttons in the section's title bar.
+
+---
+
+## Orca
+
+Commit Review Tree also runs as an [Orca](https://www.onorca.dev) plugin, in a panel of the right sidebar: the same four views, reviewed marks, notes, line comments, rounds and export. It is the extension's own code, hosted by an Orca worker (`orca/`), so both editors behave the same.
+
+**Try it** — the plugin is not in Orca's plugin listing yet. Clone this repository and load the folder with `orca plugin dev load <folder>`. It needs Orca 1.4.247 or newer. Orca shows what the plugin gets and asks you to approve it: it runs its own code as you (local `git`, and the Orca CLI to find the focused workspace's folder and to open the Review tab) and reads which workspace is focused.
+
+What differs from VS Code:
+
+| In VS Code                                     | In Orca                                                                                                                         |
+| ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| A view in the Source Control sidebar           | The **Commit Review Tree** panel in the right sidebar. It follows the focused workspace.                                        |
+| The diff editor, with comment threads          | A **Review** tab: a unified diff with line comments. Hover a line and press **+**; select lines first to comment on several.    |
+| Title-bar buttons and command palette entries  | Buttons on the panel's title bar; the palette commands are under **…**.                                                         |
+| The `commitFileTree.exportPath` setting        | Always `.commit-review/latest.md`.                                                                                              |
+| Review data in the editor's workspace storage  | A file in the repository's git directory (`commit-review-tree.json`), one per worktree. Never in the working tree.              |
+
+Limits:
+
+- The repository must be on this machine: workspaces on an SSH or WSL host are not supported.
+- Orca tells a plugin the focused workspace by name and branch only. When several workspaces share both (every repository's `main`), the panel needs a terminal open in the focused one to tell which it is, and says so when there is none.
 
 ---
 

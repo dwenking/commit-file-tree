@@ -4,7 +4,7 @@ Solo-maintained. Discrete feature requests go to GitHub Issues; this file holds 
 
 ## Now
 
-- (empty — pick from Next, or wait for an Issue)
+- Orca plugin (`orca/`, `orca-plugin.json`): the extension's own `activate()` hosted by an Orca worker on a stand-in for the `vscode` API, so every feature comes from the same code. On par with the extension except the `exportPath` setting. Not published yet: tag `v<version>` and add the `orca-plugin` topic to list it.
 
 ## Next
 
