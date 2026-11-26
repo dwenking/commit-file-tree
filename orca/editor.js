@@ -13,6 +13,8 @@
   const CONTEXT = 3; // unchanged lines kept around a change
   const FOLD = 8; // fewer hidden lines than this are not worth folding
   const CLASS = { '+': 'add', '-': 'del', ' ': 'same' };
+  // Files shown as pictures (the worker knows the same ones, see diff.js).
+  const IMAGE = /\.(png|jpe?g|gif|webp|bmp|ico|avif)$/i;
   const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
 
   const title = document.querySelector('#title');
@@ -36,6 +38,7 @@
       sections = [];
       return files.replaceChildren();
     }
+    for (const s of sections) Object.values(s.pictures || {}).forEach((url) => URL.revokeObjectURL(url));
     root = request.root;
     title.textContent = request.title || '';
     sections = request.files.map((file, i) => section(file, i === 0 ? request.line : undefined));
@@ -71,8 +74,29 @@
     return { file, line, node, lines, rows: [], comments: { old: [], new: [] }, note: 'Loading…', open: new Set() };
   }
 
+  // One version of an image as a URL the page can show, fetched in the parts the
+  // worker hands out.
+  async function picture(side) {
+    const parts = [];
+    let type;
+    for (let offset = 0; offset !== undefined; ) {
+      const part = await ask('image', { side, offset });
+      parts.push(Uint8Array.from(atob(part.data), (c) => c.charCodeAt(0)));
+      type = part.type;
+      offset = part.next;
+    }
+    return URL.createObjectURL(new Blob(parts, { type }));
+  }
+
   async function load(s) {
     try {
+      if (IMAGE.test(s.file.path)) {
+        // The version before and the one after, whichever there are.
+        const { base, target, view } = s.file;
+        s.pictures = { ...(base ? { old: await picture(base) } : {}), ...(target ? { new: await picture(target) } : {}), ...(view ? { view: await picture(view) } : {}) };
+        s.note = '';
+        return draw(s);
+      }
       const data = await ask('diff', { file: s.file });
       s.rows = data.rows;
       s.comments = data.comments;
@@ -138,6 +162,10 @@
     }
     // Comments on lines that are not among the rows (the file changed since, or was cut short).
     for (const t of all) if (t.row < 0) body.append(threadRow(s, t));
+    if (s.pictures) {
+      const images = Object.entries(s.pictures).map(([side, src]) => el('img', { class: side, src, alt: '' }));
+      body.append(el('tr', {}, el('td', { colspan: 3 }, el('div', { class: 'pictures' }, ...images))));
+    }
     if (s.note) body.append(el('tr', {}, el('td', { colspan: 3, class: 'note' }, s.note)));
     s.lines.replaceChildren(body);
     const field = s.lines.querySelector('.form vscode-textarea');

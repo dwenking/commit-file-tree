@@ -17,7 +17,7 @@ Module._resolveFilename = function (request, ...args) {
 const vscode = require('./vscode.js');
 const extension = require('../extension.js');
 const { git, watchGitDirs, writeReviewFile } = extension;
-const { fileRows } = require('./diff.js');
+const { fileRows, imagePart } = require('./diff.js');
 
 // Commands the panel's toolbar may run by name; row actions name theirs with the row.
 const TOOLBAR = new Set(['viewByCommits', 'viewCombined', 'viewByDeps', 'viewComments', 'goBack', 'refresh', 'reviewAll', 'restoreLastRound', 'resetReviewRange', 'clearReviewData'].map((c) => `commitFileTree.${c}`));
@@ -423,6 +423,11 @@ function activate(orca) {
     return { ...(await fileRows(dir, checked(dir, file))), comments: comments(saved, file) };
   });
   orca.panels.handle('comments', async ({ root: dir, file }) => comments(await reviewOf(dir), checked(dir, file)));
+  // An image is drawn as a picture, from one version's bytes.
+  orca.panels.handle('image', async ({ root: dir, side, offset }) => {
+    await reviewOf(dir);
+    return imagePart(dir, checked(dir, { view: side }).view, offset);
+  });
 
   // Changing comments is the extension's work, on the workspace it is on. Someone
   // typing in a review has that workspace focused; if the extension is still

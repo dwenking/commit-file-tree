@@ -63,6 +63,32 @@
   color: var(--vscode-descriptionForeground);
 }
 
+/* An image file: its picture, the version before (if any) left of the one after,
+   framed in the colors of a removed and an added line. */
+.pictures {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 16px;
+  padding: 16px;
+}
+.pictures img {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 100%;
+  max-height: 80vh;
+  object-fit: contain;
+  border-radius: 4px;
+  /* a checkerboard behind transparent pixels */
+  background: repeating-conic-gradient(rgb(128 128 128 / 0.18) 0% 25%, transparent 0% 50%) 50% / 16px 16px;
+}
+.pictures img.old {
+  outline: 2px solid var(--del-strong);
+}
+.pictures img.new {
+  outline: 2px solid var(--add-strong);
+}
+
 /* Lines: old number, new number, code. Long lines wrap, so a comment never
    scrolls out of sight sideways. */
 .lines {

@@ -1,6 +1,7 @@
 // Self-check for the Orca worker: node orca/test.js
 const assert = require('assert');
 const cp = require('child_process');
+const crypto = require('crypto');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -11,6 +12,8 @@ const repo = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'cft-orca-'))
 const git = (...args) => cp.execFileSync('git', ['-c', 'user.name=T', '-c', 'user.email=t@example.com', ...args], { cwd: repo });
 git('init', '-q', '-b', 'main');
 fs.writeFileSync(path.join(repo, 'a.txt'), 'hi\n');
+const committedPicture = crypto.randomBytes(2000);
+fs.writeFileSync(path.join(repo, 'pic.png'), committedPicture);
 git('add', '.');
 git('commit', '-q', '-m', 'first commit');
 fs.writeFileSync(path.join(repo, 'a.txt'), 'hello\nworld\n');
@@ -162,6 +165,26 @@ function boot() {
   answers['workspace.readContext'].terminals = [{ id: 'term_1' }];
   await panel.send({ type: 'ready' });
   assert.strictEqual((await panel.take('root')).rows.find((r) => r.context === 'commit').label, 'greeting');
+
+  // An image is shown as a picture: the editor gets the file's bytes, a committed
+  // version's or the one on disk, in parts that each fit an answer.
+  const picture = async (side) => {
+    const parts = [];
+    let part = { next: 0 };
+    while (part.next !== undefined) {
+      part = await panel.handlers.image({ root: repo, side, offset: part.next });
+      assert.strictEqual(part.type, 'image/png');
+      parts.push(Buffer.from(part.data, 'base64'));
+    }
+    assert.ok(parts.every((bytes) => bytes.length <= 512 * 1024));
+    return Buffer.concat(parts);
+  };
+  assert.ok((await picture({ ref: 'HEAD', path: 'pic.png' })).equals(committedPicture));
+  const largePicture = crypto.randomBytes(900 * 1024);
+  fs.writeFileSync(path.join(repo, 'large.png'), largePicture);
+  assert.ok((await picture({ ref: 'working', path: 'large.png' })).equals(largePicture));
+  fs.rmSync(path.join(repo, 'large.png'));
+  await assert.rejects(panel.handlers.image({ root: repo, side: { ref: 'working', path: 'a.txt' }, offset: 0 }), /image/);
 
   // A link in the working tree is shown as git stores it, its target: never the
   // file it points to, which may be anywhere.
