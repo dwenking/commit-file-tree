@@ -245,7 +245,8 @@ function boot() {
 
   // A commit made meanwhile (an agent's) shows up on its own: the worker watches the repository.
   git('commit', '-q', '--allow-empty', '-m', 'made by an agent');
-  await panel.take('root', (m) => m.rows.some((r) => r.label === 'made by an agent'));
+  // (Two seconds after the last rows at the earliest, so this one is waited for longer.)
+  await panel.take('root', (m) => m.rows.some((r) => r.label === 'made by an agent'), 1000);
 
   activate.deactivate();
   fs.rmSync(bin, { recursive: true, force: true });
