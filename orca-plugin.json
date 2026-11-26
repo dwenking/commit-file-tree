@@ -11,6 +11,10 @@
   "license": "MIT",
   "repository": "https://github.com/dwenking/commit-file-tree",
   "icon": "icon.png",
+  "cover": {
+    "path": "images/orca-cover.png",
+    "alt": "The Commit Review Tree panel in Orca: three unpushed commits opened into file trees, with status letters, risk flags, comment counts and reviewed checkmarks."
+  },
   "engines": {
     "orca": ">=1.4.247"
   },

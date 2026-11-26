@@ -4,7 +4,7 @@ Solo-maintained. Discrete feature requests go to GitHub Issues; this file holds 
 
 ## Now
 
-- Orca plugin (`orca/`, `orca-plugin.json`): the extension's own `activate()` hosted by an Orca worker on a stand-in for the `vscode` API, so every feature comes from the same code. On par with the extension except the `exportPath` setting. Not published yet: tag `v<version>` and add the `orca-plugin` topic to list it.
+- (empty — pick from Next, or wait for an Issue)
 
 ## Next
 
@@ -12,6 +12,7 @@ Solo-maintained. Discrete feature requests go to GitHub Issues; this file holds 
 
 ## Shipped
 
+- Orca plugin 0.1.0 (`orca/`, `orca-plugin.json`) — the extension's own `activate()` hosted by an Orca worker on a stand-in for the `vscode` API, so every feature comes from the same code. On par with the extension except the `exportPath` setting. A release is a `v<version>` tag that matches `orca-plugin.json`; the repository carries the `orca-plugin` topic.
 - 0.4.38 — Export button lives on the Comments view's Current round row only (look, then export; a toolbar row for one icon read as an empty line). Dependency view: a separator under an opened chain (a line under every row made the list look larger), guides always on. Pushed commits inside the checked review range stay listed while the history is hidden. Export drops the "Structure changes" section (0.4.34): the report is for feedback, the tree shows the shape. Combined's expand/collapse-declarations buttons sit on a "Declarations" row at the top of the list (count of affected files; hidden when none) — a bar holding two icons read as an empty line. Rule learned: controls go at the end of the row they act on; a toolbar row only earns its height with several buttons.
 - 0.4.35 — Dependency view: clicking a nested row opens its diff at the line where it imports its parent. Expand-all / collapse-all buttons above the Combined list, for the declaration lists only (moved onto a row in 0.4.38; the belief that tree decorations hide on hover was wrong, see 0.4.37).
 - 0.4.34 — Symbol changes: a marker on a file unfolds its declarations as A/M/D rows ("method audited", "variable Javers javers"; JS/TS, Python, Java) with kind icons; click one to open the diff at that line; "Structure changes" section in the export. Static regex scan of both sides, since no language server serves `git:` URIs; compared by signature, so overloads and type changes show.

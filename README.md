@@ -253,7 +253,7 @@ Revert the dependency bump.
 
 Commit Review Tree also runs as an [Orca](https://www.onorca.dev) plugin, in a panel of the right sidebar: the same four views, reviewed marks, notes, line comments, rounds and export. It is the extension's own code, hosted by an Orca worker (`orca/`), so both editors behave the same.
 
-**Try it** — the plugin is not in Orca's plugin listing yet. Clone this repository and load the folder with `orca plugin dev load <folder>`. It needs Orca 1.4.247 or newer. Orca shows what the plugin gets and asks you to approve it: it runs its own code as you (local `git`, and the Orca CLI to find the focused workspace's folder and to open the Review tab) and reads which workspace is focused.
+**Install** — from Orca's plugin list (Settings → Plugins), or from [its page](https://www.onorca.dev/plugins/dwenking/commit-file-tree). It needs Orca 1.4.247 or newer. Orca shows what the plugin gets and asks you to approve it: it runs its own code as you (local `git`, and the Orca CLI to find the focused workspace's folder and to open the Review tab) and reads which workspace is focused.
 
 What differs from VS Code:
 

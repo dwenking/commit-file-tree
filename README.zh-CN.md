@@ -253,7 +253,7 @@ Revert the dependency bump.
 
 Commit Review Tree 也可以作为 [Orca](https://www.onorca.dev) 插件运行，显示在右侧栏的面板里：同样的四种视图、已审标记、备注、行内评论、轮次和导出。它运行的就是扩展自己的代码，由一个 Orca worker（`orca/`）承载，所以两个编辑器里的行为一致。
 
-**试用**：插件还没有上架 Orca 的插件列表。克隆本仓库后用 `orca plugin dev load <目录>` 加载。需要 Orca 1.4.247 或更新版本。Orca 会列出插件获得的权限并请你批准：它以你的身份运行自己的代码（本地 `git`，以及用 Orca CLI 查找当前工作区的目录、打开 Review 标签页），并读取当前聚焦的是哪个工作区。
+**安装**：在 Orca 的插件列表（设置 → 插件）里安装，或见[插件页面](https://www.onorca.dev/plugins/dwenking/commit-file-tree)。需要 Orca 1.4.247 或更新版本。Orca 会列出插件获得的权限并请你批准：它以你的身份运行自己的代码（本地 `git`，以及用 Orca CLI 查找当前工作区的目录、打开 Review 标签页），并读取当前聚焦的是哪个工作区。
 
 与 VS Code 的区别：
 
