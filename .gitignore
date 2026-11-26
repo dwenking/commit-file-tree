@@ -2,3 +2,4 @@
 node_modules/
 .env
 .orca/
+.DS_Store
