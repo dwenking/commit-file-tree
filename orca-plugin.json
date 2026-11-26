@@ -2,7 +2,7 @@
   "manifestVersion": 2,
   "id": "commit-file-tree",
   "name": "Commit Review Tree",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Review AI-generated commits like a PR: unpushed work as file trees (by commit, combined, or by dependencies), line comments, reviewed checkmarks, risk flags, and one-click export of feedback for your agent.",
   "author": {
     "name": "dwenking",
