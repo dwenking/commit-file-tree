@@ -291,6 +291,8 @@ function activate(orca) {
     for (const settle of asks.values()) settle(undefined);
     asks.clear();
     post({ type: 'ui', kind: 'dismiss' });
+    // A refresh under way is for the workspace being left: its rows will be dropped.
+    building = 0;
     // The state is read before the root changes, so the two never disagree.
     const file = next ? await stateFileOf(next).catch(() => undefined) : undefined; // not a repository: `load` says so
     root = next;
